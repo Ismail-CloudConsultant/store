@@ -1,25 +1,7 @@
-import streamlit as st
-
-# Custom style for sidebar background and text
 st.markdown("""
     <style>
-        /* Sidebar background color */
-        [data-testid="stSidebar"] {
-            background-color: #f0f2f6;
-        }
-
-        /* Sidebar general text style */
-        [data-testid="stSidebar"] * {
-            font-size: 18px !important;      /* Increase font size */
-            font-weight: 600 !important;     /* Make text bold */
-            color: #111111 !important;       /* Darker text for better contrast */
-        }
-
-        /* Extra spacing between widgets */
-        [data-testid="stSidebar"] .stSelectbox,
-        [data-testid="stSidebar"] .stRadio,
-        [data-testid="stSidebar"] .stFileUploader {
-            margin-bottom: 1rem;
+        .block-container {
+            padding-top: 1rem !important;
         }
     </style>
 """, unsafe_allow_html=True)
