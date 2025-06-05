@@ -1,17 +1,16 @@
 import os
 import sys
+import subprocess
 
 def resource_path(relative_path):
-    """ Get the absolute path to the resource, works for dev and for PyInstaller .exe """
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
+        base_path = sys._MEIPASS  # PyInstaller bundle path
     except AttributeError:
         base_path = os.path.abspath(".")
-
     return os.path.join(base_path, relative_path)
 
-# Example: Read file inside 'mydata' folder
-file_path = resource_path("mydata/file1.csv")
-with open(file_path, 'r') as f:
-    print(f.read())
+# Path to streamlit app
+script_path = resource_path("myapp/streamlit_app.py")
+
+# Launch streamlit
+subprocess.run(["streamlit", "run", script_path])
