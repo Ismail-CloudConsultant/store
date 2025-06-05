@@ -1,7 +1,17 @@
-st.markdown("""
-    <style>
-        .block-container {
-            padding-top: 1rem !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
+import os
+import sys
+
+def resource_path(relative_path):
+    """ Get the absolute path to the resource, works for dev and for PyInstaller .exe """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+# Example: Read file inside 'mydata' folder
+file_path = resource_path("mydata/file1.csv")
+with open(file_path, 'r') as f:
+    print(f.read())
