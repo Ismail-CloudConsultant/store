@@ -4,13 +4,21 @@ import subprocess
 
 def resource_path(relative_path):
     try:
-        base_path = sys._MEIPASS  # PyInstaller bundle path
+        # Path inside PyInstaller bundle
+        base_path = sys._MEIPASS
     except AttributeError:
+        # Path during development
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# Path to streamlit app
-script_path = resource_path("myapp/streamlit_app.py")
+# Path to your Streamlit app inside the bundled folder
+app_path = resource_path("myapp/streamlit_app.py")
 
-# Launch streamlit
-subprocess.run(["streamlit", "run", script_path])
+# Run the app using the current Python executable
+subprocess.run([sys.executable, "-m", "streamlit", "run", app_path])
+
+
+--hidden-import=streamlit
+--hidden-import=streamlit.web.bootstrap
+--hidden-import=streamlit.runtime.scriptrunner
+--hidden-import=validators
