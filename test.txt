@@ -1,22 +1,19 @@
-import os
-import sys
+import pandas as pd
 
-def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS  # PyInstaller unpacked temp path
-    except AttributeError:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
+# Sample data
+df = pd.DataFrame({
+    'A': ['123', '45a', '67!', '89', 'abc', '100'],
+    'B': ['x', 'y', 'z', 'w', 'v', 'u']
+})
 
-# Get the full path to your Streamlit script
-streamlit_app = resource_path("myapp/streamlit_app.py")
+# Keep only rows where A is a valid integer (optional: drop others)
+df_cleaned = df[df['A'].str.match(r'^\d+$')].copy()
 
-# Launch Streamlit using os.system
-os.system(f'"{sys.executable}" -m streamlit run "{streamlit_app}"')
+# Convert column A to integers
+df_cleaned['A'] = df_cleaned['A'].astype(int)
+
+print(df_cleaned)
 
 
 
---hidden-import=streamlit
---hidden-import=streamlit.web.bootstrap
---hidden-import=streamlit.runtime.scriptrunner
---hidden-import=validators
+df['A'] = pd.to_numeric(df['A'], errors='coerce')
