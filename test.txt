@@ -2,18 +2,17 @@ import pandas as pd
 
 # Sample data
 df = pd.DataFrame({
-    'A': ['123', '45a', '67!', '89', 'abc', '100'],
-    'B': ['x', 'y', 'z', 'w', 'v', 'u']
+    'A': ['123', '45a', '67!', '89.0', 'abc', '100.5', '1e3', '-45.6'],
+    'B': ['x', 'y', 'z', 'w', 'v', 'u', 't', 's']
 })
 
-# Keep only rows where A is a valid integer (optional: drop others)
-df_cleaned = df[df['A'].str.match(r'^\d+$')].copy()
+# Use regex to extract valid numeric patterns (including decimals, negatives, scientific notation)
+df['A'] = df['A'].astype(str).str.extract(r'^([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)$')[0]
 
-# Convert column A to integers
-df_cleaned['A'] = df_cleaned['A'].astype(int)
+# Convert to float (optional: to int if needed, but float is safer here)
+df['A'] = pd.to_numeric(df['A'], errors='coerce')
+
+# Drop rows where A is still NaN (i.e., invalid numbers)
+df_cleaned = df.dropna(subset=['A'])
 
 print(df_cleaned)
-
-
-
-df['A'] = pd.to_numeric(df['A'], errors='coerce')
