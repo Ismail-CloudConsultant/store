@@ -1,18 +1,25 @@
 import pandas as pd
+from datetime import datetime
 
 # Sample data
 df = pd.DataFrame({
-    'A': ['123', '45a', '67!', '89.0', 'abc', '100.5', '1e3', '-45.6'],
-    'B': ['x', 'y', 'z', 'w', 'v', 'u', 't', 's']
+    'date': ['12-05-2024', '05/12/2024', '01-01-2025', '07/04/2025']
 })
 
-# Use regex to extract valid numeric patterns (including decimals, negatives, scientific notation)
-df['A'] = df['A'].astype(str).str.extract(r'^([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)$')[0]
+# Function to parse and reformat
+def convert_to_mmddyyyy(date_str):
+    try:
+        if '-' in date_str:
+            dt = datetime.strptime(date_str, "%d-%m-%Y")
+        elif '/' in date_str:
+            dt = datetime.strptime(date_str, "%m/%d/%Y")
+        else:
+            return date_str  # Unrecognized format
+        return dt.strftime("%m/%d/%Y")
+    except Exception as e:
+        return date_str  # Or return None / log error if preferred
 
-# Convert to float (optional: to int if needed, but float is safer here)
-df['A'] = pd.to_numeric(df['A'], errors='coerce')
+# Apply the function
+df['formatted_date'] = df['date'].apply(convert_to_mmddyyyy)
 
-# Drop rows where A is still NaN (i.e., invalid numbers)
-df_cleaned = df.dropna(subset=['A'])
-
-print(df_cleaned)
+print(df)
