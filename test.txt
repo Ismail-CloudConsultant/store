@@ -1,35 +1,53 @@
-Here’s a polished and professional rephrasing of your email:
+import numpy as np
+import pandas as pd
 
+# Assuming your DataFrame is named df
+df['Source_File'] = df['Source_File'].str.strip()
+df['Cards_LCY'] = df['Cards_LCY'].str.strip()
+df['Definition_as_per_the_market'] = df['Definition_as_per_the_market'].str.strip()
 
----
+# Define conditions
+conditions = [
+    (df['Cards_LCY'] == 'nan') & 
+    (df['Definition_as_per_the_market'] == 'nan') & 
+    (df['Source_File'] == 'MYH'),
 
-Subject: Tool Installation and Usage Guide
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '1.total accts'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '10.total accts where mob = 3'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '11.active accts where mob =6'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '12.total accts where mob = 6'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '13.payment amount in the current month'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '14.end of month balance in the previous month'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '15.credit limt assinged to the customer'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '16.accts in force with sum'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '17.accts in force if balance active or debit active'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '18.total balance in accts in force'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '19.total revolving balance'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '2.voluntary acct attrition'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '3.accts in force with eom balance <>0'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '4.eom balances of accts where interest amount > 0'),
+    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '5.total end of month balances'),
+]
 
-Hi Team,
-Hope you're doing well.
+# Define choices
+choices = [
+    'Instalment Inflow (RBC, ABC)',
+    'Total Accts in force – A',
+    '# Total Accts @ MOB3 - A',
+    '# Active Accts @ MOB6 - A',
+    '# Total Accts @ MOB6 - A',
+    'Payment Amount - A',
+    'Previous Month End balance - A',
+    'Total Credit Limit - A',
+    '# Debit Active Accts - A',
+    '# Total Active Accts - A',
+    'Total Revolving Balance - A',
+    'Interest Free Revolving - A',
+    '# Accts  attrited voluntarily - A',
+    '# Balance Active Accts - A',
+    'IBB balances - A',
+    'Total Month End Balances - A'
+]
 
-Thank you so much for your continued support in the development of this tool.
-We’ve now built a version that runs locally using Python.
-
-To help you install and run the tool on your system, I’ve recorded a series of detailed videos and organized supporting materials in the following folders:
-
-1. Python Setup – Contains videos and documents for downloading and installing Python.
-
-
-2. Tool Operations – Part 1
-
-
-3. Tool Operations – Part 2 – These two folders include videos, documents, and scripts demonstrating various operations within the tool.
-
-
-
-Please go through the materials and feel free to reach out if you have any questions or need further assistance.
-
-Best regards,
-[Your Name]
-
-
----
-
-Let me know if you want to tailor this for a more casual tone or a specific recipient.
-
+# Apply conditions
+df['Metric'] = np.select(conditions, choices, default=df['Cards_LCY'].str.strip())
