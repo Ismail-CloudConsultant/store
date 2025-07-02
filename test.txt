@@ -1,94 +1,52 @@
 import pandas as pd
 import numpy as np
 
-# Step 1: Prepare the data
-df = df.copy()
+# Trim columns
+df['Country_CDE'] = df['Country_cde'].str.strip()
+df['ASSET'] = df['ASSET'].astype(str).str.strip()
+df['Data_Upload_TS'] = pd.to_datetime(df['Data_Upload_TS'], errors='coerce')
 
-# Clean strings
-df['Source_File'] = df['Source_File'].str.strip()
-df['Cards_LCY'] = df['Cards_LCY'].str.strip()
-df['Definition_as_per_the_market'] = df['Definition_as_per_the_market'].str.strip()
+# Define country map for first SELECT
+country_map_main = {
+    'GBP': 'UK',
+    'HKD': 'AMH',
+    'MXN': 'MEX',
+    'AED': 'UAE',
+    'SGD': 'SGH',
+    'MYR': 'MYH',
+    'INR': 'INM',
+    'VND': 'VNM',
+    'TWD': 'TWN',
+    'AUD': 'AUH',
+    'EGP': 'EGY',
+    'CAD': 'CAN',
+    'USD': 'USA',
+    'CNY': 'AOC',
+    'IDR': 'IMO',
+    'PHP': 'MNL'
+}
 
-# Filter out 'Variable' and 'Formula' rows
-df_filtered = df[~df['Date'].isin(['Variable', 'Formula'])].copy()
+# Define country map for second SELECT (HKD → HASE)
+country_map_hase = {
+    'HKD': 'HASE'
+}
 
-# Convert to datetime
-df_filtered['datetime1'] = pd.to_datetime(df_filtered['Date'], errors='coerce')
+# Filter for main query
+main_countries = list(country_map_main.keys())
+df_main = df[df['Country_CDE'].isin(main_countries)].copy()
+df_main['COUNTRY'] = df_main['Country_CDE'].map(country_map_main)
+df_main['FX'] = pd.to_numeric(df_main['ASSET'], errors='coerce')
+df_main['Date'] = df_main['Data_Upload_TS'] + pd.offsets.MonthEnd(0)
 
-# Get last day of month
-df_filtered['date'] = df_filtered['datetime1'] + pd.offsets.MonthEnd(0)
+# Filter for second part (just HKD → HASE)
+df_hase = df[df['Country_CDE'] == 'HKD'].copy()
+df_hase['COUNTRY'] = df_hase['Country_CDE'].map(country_map_hase)
+df_hase['FX'] = pd.to_numeric(df_hase['ASSET'], errors='coerce')
+df_hase['Date'] = df_hase['Data_Upload_TS'] + pd.offsets.MonthEnd(0)
 
-# Use your previously created 'Metric' logic here
-# (Assume df_filtered already has 'Metric' column from previous logic)
+# Select final columns
+df_main = df_main[['Country_CDE', 'FX', 'Date', 'COUNTRY']]
+df_hase = df_hase[['Country_CDE', 'FX', 'Date', 'COUNTRY']]
 
-# Step 2: Aggregate to create `base`
-base = df_filtered.groupby([
-    df_filtered['Source_File'].str.strip().rename('Country'),
-    'Metric',
-    'Definition_as_per_the_market',
-    'date'
-], as_index=False).agg({'Value': 'sum'})
-
-# Step 3: TypeA: Pivot & compute A-B-C
-typeA_countries = ['SGH','MYH','INM','VNM','TWN','IMO','MNL','AUH']
-typeA_metrics = ['IBB balances - A', 'BT Portfolio Balance – A', 'Instalment Portfolio Balance- A']
-
-typeA_df = base[
-    base['Country'].isin(typeA_countries) &
-    base['Metric'].isin(typeA_metrics)
-]
-
-pivotA = typeA_df.pivot_table(index=['Country', 'date'], columns='Metric', values='Value', aggfunc='sum').fillna(0)
-pivotA = pivotA.reset_index()
-
-pivotA['A'] = pivotA.get('IBB balances - A', 0)
-pivotA['B'] = pivotA.get('BT Portfolio Balance – A', 0)
-pivotA['C'] = pivotA.get('Instalment Portfolio Balance- A', 0)
-
-typeA_result = pivotA.assign(
-    Market_Definition='NA',
-    Value=pivotA['A'] - pivotA['B'] - pivotA['C'],
-    Metric='Adjusted IBB'
-)[['Country', 'Market_Definition', 'date', 'Value', 'Metric']]
-
-# Step 4: TypeB: Similar pivot but different metrics
-typeB_countries = ['HASE']
-typeB_metrics = ['Total Revolving Balance - A', 'Instalment Portfolio Balance- A']
-
-typeB_df = base[
-    base['Country'].isin(typeB_countries) &
-    base['Metric'].isin(typeB_metrics)
-]
-
-pivotB = typeB_df.pivot_table(index=['Country', 'date'], columns='Metric', values='Value', aggfunc='sum').fillna(0)
-pivotB = pivotB.reset_index()
-
-pivotB['A'] = pivotB.get('Total Revolving Balance - A', 0)
-pivotB['B'] = pivotB.get('Instalment Portfolio Balance- A', 0)
-
-typeB_result = pivotB.assign(
-    Market_Definition='NA',
-    Value=pivotB['A'] - pivotB['B'],
-    Metric='Adjusted IBB'
-)[['Country', 'Market_Definition', 'date', 'Value', 'Metric']]
-
-# Step 5: TypeC: Just filter
-typeC_countries = ['UK_Ex_JLFS','AMH','MEX','UAE','EGY','USA','AOC']
-
-typeC_result = base[
-    (base['Country'].isin(typeC_countries)) &
-    (base['Metric'] == 'IBB balances - A')
-].assign(
-    Market_Definition='NA',
-    Metric='Adjusted IBB'
-)[['Country', 'Market_Definition', 'date', 'Value', 'Metric']]
-
-# Step 6: Combine all
-final_df = pd.concat([
-    typeA_result,
-    typeB_result,
-    typeC_result,
-    base.rename(columns={
-        'Definition_as_per_the_market': 'Market_Definition'
-    })[['Country', 'Market_Definition', 'date', 'Value', 'Metric']]
-], ignore_index=True)
+# Union All
+final_df = pd.concat([df_main, df_hase], ignore_index=True)
