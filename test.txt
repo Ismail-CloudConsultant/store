@@ -1,53 +1,94 @@
-import numpy as np
 import pandas as pd
+import numpy as np
 
-# Assuming your DataFrame is named df
+# Step 1: Prepare the data
+df = df.copy()
+
+# Clean strings
 df['Source_File'] = df['Source_File'].str.strip()
 df['Cards_LCY'] = df['Cards_LCY'].str.strip()
 df['Definition_as_per_the_market'] = df['Definition_as_per_the_market'].str.strip()
 
-# Define conditions
-conditions = [
-    (df['Cards_LCY'] == 'nan') & 
-    (df['Definition_as_per_the_market'] == 'nan') & 
-    (df['Source_File'] == 'MYH'),
+# Filter out 'Variable' and 'Formula' rows
+df_filtered = df[~df['Date'].isin(['Variable', 'Formula'])].copy()
 
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '1.total accts'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '10.total accts where mob = 3'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '11.active accts where mob =6'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '12.total accts where mob = 6'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '13.payment amount in the current month'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '14.end of month balance in the previous month'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '15.credit limt assinged to the customer'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '16.accts in force with sum'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '17.accts in force if balance active or debit active'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '18.total balance in accts in force'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '19.total revolving balance'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '2.voluntary acct attrition'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '3.accts in force with eom balance <>0'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '4.eom balances of accts where interest amount > 0'),
-    (df['Source_File'] == 'AOC') & (df['Cards_LCY'] == '5.total end of month balances'),
+# Convert to datetime
+df_filtered['datetime1'] = pd.to_datetime(df_filtered['Date'], errors='coerce')
+
+# Get last day of month
+df_filtered['date'] = df_filtered['datetime1'] + pd.offsets.MonthEnd(0)
+
+# Use your previously created 'Metric' logic here
+# (Assume df_filtered already has 'Metric' column from previous logic)
+
+# Step 2: Aggregate to create `base`
+base = df_filtered.groupby([
+    df_filtered['Source_File'].str.strip().rename('Country'),
+    'Metric',
+    'Definition_as_per_the_market',
+    'date'
+], as_index=False).agg({'Value': 'sum'})
+
+# Step 3: TypeA: Pivot & compute A-B-C
+typeA_countries = ['SGH','MYH','INM','VNM','TWN','IMO','MNL','AUH']
+typeA_metrics = ['IBB balances - A', 'BT Portfolio Balance – A', 'Instalment Portfolio Balance- A']
+
+typeA_df = base[
+    base['Country'].isin(typeA_countries) &
+    base['Metric'].isin(typeA_metrics)
 ]
 
-# Define choices
-choices = [
-    'Instalment Inflow (RBC, ABC)',
-    'Total Accts in force – A',
-    '# Total Accts @ MOB3 - A',
-    '# Active Accts @ MOB6 - A',
-    '# Total Accts @ MOB6 - A',
-    'Payment Amount - A',
-    'Previous Month End balance - A',
-    'Total Credit Limit - A',
-    '# Debit Active Accts - A',
-    '# Total Active Accts - A',
-    'Total Revolving Balance - A',
-    'Interest Free Revolving - A',
-    '# Accts  attrited voluntarily - A',
-    '# Balance Active Accts - A',
-    'IBB balances - A',
-    'Total Month End Balances - A'
+pivotA = typeA_df.pivot_table(index=['Country', 'date'], columns='Metric', values='Value', aggfunc='sum').fillna(0)
+pivotA = pivotA.reset_index()
+
+pivotA['A'] = pivotA.get('IBB balances - A', 0)
+pivotA['B'] = pivotA.get('BT Portfolio Balance – A', 0)
+pivotA['C'] = pivotA.get('Instalment Portfolio Balance- A', 0)
+
+typeA_result = pivotA.assign(
+    Market_Definition='NA',
+    Value=pivotA['A'] - pivotA['B'] - pivotA['C'],
+    Metric='Adjusted IBB'
+)[['Country', 'Market_Definition', 'date', 'Value', 'Metric']]
+
+# Step 4: TypeB: Similar pivot but different metrics
+typeB_countries = ['HASE']
+typeB_metrics = ['Total Revolving Balance - A', 'Instalment Portfolio Balance- A']
+
+typeB_df = base[
+    base['Country'].isin(typeB_countries) &
+    base['Metric'].isin(typeB_metrics)
 ]
 
-# Apply conditions
-df['Metric'] = np.select(conditions, choices, default=df['Cards_LCY'].str.strip())
+pivotB = typeB_df.pivot_table(index=['Country', 'date'], columns='Metric', values='Value', aggfunc='sum').fillna(0)
+pivotB = pivotB.reset_index()
+
+pivotB['A'] = pivotB.get('Total Revolving Balance - A', 0)
+pivotB['B'] = pivotB.get('Instalment Portfolio Balance- A', 0)
+
+typeB_result = pivotB.assign(
+    Market_Definition='NA',
+    Value=pivotB['A'] - pivotB['B'],
+    Metric='Adjusted IBB'
+)[['Country', 'Market_Definition', 'date', 'Value', 'Metric']]
+
+# Step 5: TypeC: Just filter
+typeC_countries = ['UK_Ex_JLFS','AMH','MEX','UAE','EGY','USA','AOC']
+
+typeC_result = base[
+    (base['Country'].isin(typeC_countries)) &
+    (base['Metric'] == 'IBB balances - A')
+].assign(
+    Market_Definition='NA',
+    Metric='Adjusted IBB'
+)[['Country', 'Market_Definition', 'date', 'Value', 'Metric']]
+
+# Step 6: Combine all
+final_df = pd.concat([
+    typeA_result,
+    typeB_result,
+    typeC_result,
+    base.rename(columns={
+        'Definition_as_per_the_market': 'Market_Definition'
+    })[['Country', 'Market_Definition', 'date', 'Value', 'Metric']]
+], ignore_index=True)
