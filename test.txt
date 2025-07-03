@@ -1,40 +1,18 @@
-import pandas as pd
+# This helps you handle all columns correctly
+insert_cols = df_target.columns
 
-# Assume these are your source and target dataframes
-df_target = df_target.copy()
-df_source = df_source.copy()
+# Build a mapping from target col → source col (with _s if needed)
+source_cols = []
+for col in insert_cols:
+    if col + '_s' in df_insert.columns:
+        source_cols.append(col + '_s')
+    elif col in df_insert.columns:
+        source_cols.append(col)
+    else:
+        # Fill missing columns with NaNs
+        df_insert[col + '_missing'] = pd.NA
+        source_cols.append(col + '_missing')
 
-# Step 1: Strip text fields
-text_cols = ['Source_File', 'Customer_Type', 'Product_Code', 'Card_Type']
-for col in text_cols:
-    df_target[col] = df_target[col].astype(str).str.strip()
-    df_source[col] = df_source[col].astype(str).str.strip()
-
-# Step 2: Define merge keys
-merge_keys = [
-    'Source_File', 'm_mon', 'n_mob1', 'acq_mon',
-    'Acquisition_Channel', 'Customer_Type', 'Product_Code', 'Card_Type'
-]
-
-# Step 3: Merge on keys (outer join to allow insert + update detection)
-merged = pd.merge(df_target, df_source, on=merge_keys, how='outer', suffixes=('_t', '_s'), indicator=True)
-
-# Step 4: Update existing records
-df_update = merged[merged['_merge'] == 'both'].copy()
-df_update['accts'] = df_update['accts_s']
-df_update['ever_activation_flag'] = df_update['ever_activation_flag_s']
-df_update['ever_debit_active'] = df_update['ever_debit_active_s']
-df_update['ever_stmt_active'] = df_update['ever_stmt_active_s']
-
-# Step 5: Insert new records
-df_insert = merged[merged['_merge'] == 'right_only']
-insert_cols = df_target.columns  # Ensure it matches target table structure
-df_insert_clean = df_insert[[col + '_s' if col in df_source.columns else col for col in insert_cols]]
-df_insert_clean.columns = insert_cols
-
-# Step 6: Combine updated + new rows with unmatched old records
-df_final = pd.concat([
-    df_target[~df_target.set_index(merge_keys).index.isin(df_update.set_index(merge_keys).index)],
-    df_update[df_target.columns],
-    df_insert_clean
-], ignore_index=True)
+# Create df_insert_clean with aligned columns
+df_insert_clean = df_insert[source_cols].copy()
+df_insert_clean.columns = insert_cols  # Rename to match df_target structure
