@@ -2,26 +2,53 @@ import pandas as pd
 import numpy as np
 from pandas.tseries.offsets import MonthEnd
 
-# Assuming your dataframe is named:
-# df = pd.read_csv(...) or pd.read_gbq(...) etc.
+# Load both dataframes
+# df1 = pd.read_gbq("SELECT * FROM ...VIEW_DEV_REV_CARDS_SUMMARY")
+# df2 = pd.read_gbq("SELECT * FROM ...DEV_ACTIVATION_RATE_UAE_RAW")
 
-# 1. Filter for n_mob1 in (1, 3)
-df_filtered = df[df['n_mob1'].isin([1, 3])].copy()
+# Step 1: Filter df1
+metrics1 = ['% Activation (Cumulative)', '%Activation (Cumulative)', '% Ever Spend Active', '%Ever Spend Active']
+countries = ['AMH', 'HASE', 'MEX', 'UAE', 'UK']
+df1_filtered = df1[df1['COUNTRY'].isin(countries) & df1['Metric'].isin(metrics1)].copy()
 
-# 2. Trim Source_File and rename to Country
-df_filtered['Country'] = df_filtered['Source_File'].astype(str).str.strip()
+# Step 2: Create new columns
+df1_filtered['Act_Cumulative_perc'] = np.where(
+    df1_filtered['Metric'].str.strip().isin(['% Activation (Cumulative)', '%Activation (Cumulative)']),
+    df1_filtered['Value'],
+    0
+)
 
-# 3. Convert acq_mon to a proper date ending on the last day of the month
-df_filtered['acq_mon'] = pd.to_datetime(df_filtered['acq_mon'].astype(str) + '28', format='%Y%m%d') + MonthEnd(0)
+df1_filtered['Ever_Spend_Active_Perc'] = np.where(
+    df1_filtered['Metric'].str.strip().isin(['% Ever Spend Active', '%Ever Spend Active']),
+    df1_filtered['Value'],
+    0
+)
 
-# 4. Group and aggregate
-df_grouped = (
-    df_filtered
-    .groupby(['Country', 'n_mob1', 'm_mon', 'acq_mon'], dropna=False)
-    .agg(
-        Total_Accnt=('accts', 'sum'),
-        Ever_Activation=('ever_activation_flag', lambda x: np.nansum(pd.to_numeric(x, errors='coerce'))),
-        Ever_Debit_Active=('ever_debit_active', lambda x: np.nansum(pd.to_numeric(x, errors='coerce')))
-    )
+# Step 3: Rename and format
+df1_filtered['final_Date'] = pd.to_datetime(df1_filtered['date']) + MonthEnd(0)
+df1_filtered['MOB1'] = pd.to_numeric(df1_filtered['Market_Definition'], errors='coerce').astype('Int64')
+df1_grouped = (
+    df1_filtered
+    .groupby(['Country', 'MOB1', 'final_Date'], dropna=False)
+    .agg({
+        'Act_Cumulative_perc': 'sum',
+        'Ever_Spend_Active_Perc': 'sum'
+    })
     .reset_index()
 )
+
+# Step 4: Process df2
+df2_cleaned = df2.copy()
+df2_cleaned['final_Date'] = pd.to_datetime(df2_cleaned['Date']) + MonthEnd(0)
+df2_cleaned['Activation_Cumulative_perc'] = 0
+df2_cleaned = df2_cleaned.rename(columns={
+    'Source_File': 'Country',
+    'MOB': 'MOB1'
+})
+df2_result = df2_cleaned[['Country', 'MOB1', 'final_Date', 'Activation_Cumulative_perc', 'Ever_Spend_Active_Perc']]
+
+# Step 5: Align df2 columns with df1
+df2_result = df2_result.rename(columns={'Activation_Cumulative_perc': 'Act_Cumulative_perc'})
+
+# Step 6: Combine both (UNION ALL)
+final_result = pd.concat([df1_grouped, df2_result], ignore_index=True)
