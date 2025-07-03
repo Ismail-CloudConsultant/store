@@ -1,48 +1,26 @@
 import pandas as pd
 
-# Step 1: Clean and convert types
+# Assume df is your original DataFrame
 df = df_raw.copy()
+
+# Step 1: Strip whitespaces from 'Country' and 'Metric'
 df['Country'] = df['Country'].str.strip()
-df['Finance_Data_USD'] = df['Finance_Data_USD'].str.strip()
-df['Definition'] = df['Definition'].astype(str).str.strip()
-df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-df['Value'] = df['Value'].astype(str).str.strip()
-df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
+df['Metric'] = df['Metric'].str.strip()
 
-# Step 2: Transform Finance_Data_USD for specific countries
-def transform_metric(row):
-    if row['Country'] in ['Taiwan', 'Indonesia', 'Philippines']:
-        if row['Finance_Data_USD'] == "Total Cards in force (000's)":
-            return 'Total Cards in force (#)'
-        elif row['Finance_Data_USD'] == "New Card Sales (000's)":
-            return 'New Card Sales (#)'
-    return row['Finance_Data_USD']
-
-df['Finance_Data_USD'] = df.apply(transform_metric, axis=1)
-
-# Step 3: Adjust VALUE for specific metric and country
-def adjust_value(row):
-    if row['Country'] in ['Indonesia', 'Philippines'] and row['Finance_Data_USD'] == "New Card Sales (000's)":
-        return row['Value'] * 1000
-    return row['Value']
-
-df['VALUE'] = df.apply(adjust_value, axis=1)
-
-# Step 4: Create datetime1 and last-day-of-month date
-df['datetime1'] = df['Date']
-df['Date'] = df['datetime1'] + pd.offsets.MonthEnd(0)
-
-# Step 5: Rename metric
-df['Metric'] = df['Finance_Data_USD'].apply(
-    lambda x: "New Card Accounts (#)" if x == "New Card Accounts (000's)" else x
-)
-
-# Step 6: Country mapping
+# Step 2: Create 'COUNTRY' based on mapping logic
 country_map = {
     "UK (adjusted ex JLFS)": "UK",
     "AMH": "AMH",
     "HASE": "HASE",
     "HASE HK": "HASE",
+    "Mexico": "MEX",
+    "UAE": "UAE",
+    "Singapore": "SGH",
+    "Malaysia": "MYH",
+    "India": "INM",
+    "Vietnam": "VNM",
+    "Taiwan": "TWN",
+    "Indonesia": "IMO",
     "Philippines": "MNL",
     "Australia": "AUH",
     "Egypt": "EGY",
@@ -54,18 +32,12 @@ country_map = {
     "Focus market margins ex. JLFS, CA": "GlobalExJLFSCA",
     "Global ex Fr": "IWPB"
 }
-df['COUNTRY'] = df['Country'].map(country_map)
 
-# Step 7: Group and aggregate
-grouped = df.groupby(['COUNTRY', 'Metric', 'Definition', 'Date'], dropna=False)['VALUE'].sum().reset_index()
+# Apply mapping with fallback to original
+df['COUNTRY'] = df['Country'].map(country_map).fillna(df['Country'])
 
-# Step 8: HAVING filter (valid COUNTRY only)
-valid_countries = [
-    'UK', 'AMH', 'HASE', 'MEX', 'UAE', 'SGH', 'MYH', 'INM', 'VNM',
-    'TWN', 'EGY', 'CAN', 'USA', 'AUH', 'AOC', 'IMO', 'MNL',
-    'GlobalExclUSAOCCANJLFS', 'GlobalExJLFSCA', 'IWPB'
-]
-grouped = grouped[grouped['COUNTRY'].isin(valid_countries)]
+# Step 3: Add 'country_metric' as Country || Metric
+df['country_metric'] = df['Country'] + df['Metric']
 
-# Step 9: Sort final output
-final_df = grouped.sort_values(by=['Metric', 'Definition', 'COUNTRY', 'Date'])
+# Step 4: Drop original 'Country' column (equivalent to SELECT * EXCEPT(Country))
+df = df.drop(columns=['Country'])
