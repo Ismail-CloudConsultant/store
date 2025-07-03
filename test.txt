@@ -1,60 +1,71 @@
 import pandas as pd
 
-# 1. Filter cards data where COUNTRY1 != 'UK RFB'
-df_cards = df_cards[df_cards['COUNTRY1'] != 'UK RFB'].copy()
+# Step 1: Clean and convert types
+df = df_raw.copy()
+df['Country'] = df['Country'].str.strip()
+df['Finance_Data_USD'] = df['Finance_Data_USD'].str.strip()
+df['Definition'] = df['Definition'].astype(str).str.strip()
+df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+df['Value'] = df['Value'].astype(str).str.strip()
+df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
 
-# 2. Add month-end date column to all 3 dataframes
-for df in [df_cards, df_loans, df_tm1]:
-    df['DATE'] = pd.to_datetime(df['Date'], errors='coerce') + pd.offsets.MonthEnd(0)
+# Step 2: Transform Finance_Data_USD for specific countries
+def transform_metric(row):
+    if row['Country'] in ['Taiwan', 'Indonesia', 'Philippines']:
+        if row['Finance_Data_USD'] == "Total Cards in force (000's)":
+            return 'Total Cards in force (#)'
+        elif row['Finance_Data_USD'] == "New Card Sales (000's)":
+            return 'New Card Sales (#)'
+    return row['Finance_Data_USD']
 
-# 3. Rename columns to avoid conflicts and match SQL aliases
-df_cards = df_cards.rename(columns={
-    'COUNTRY1': 'COUNTRY',
-    'REVENUE': 'REVENUE_CARDS',
-    'CoF_LP': 'CoF_LP_CARDS',
-    'Net_Fee_Income': 'NET_FEE_INCOME_CARDS',
-    'Interest_Income': 'INTEREST_INCOME_CARDS',
-    'EOP_Gross_Balance': 'EOP_GROSS_BALANCE_CARDS',
-    'Net_Interest_Income': 'NET_INTEREST_INCOME_CARDS',
-    'INTERCHANGE_RECEIVED': 'INTERCHANGE_RECEIVED_CARDS'
-})
+df['Finance_Data_USD'] = df.apply(transform_metric, axis=1)
 
-df_loans = df_loans.rename(columns={
-    'COUNTRY1': 'COUNTRY',
-    'REVENUE': 'REVENUE_LOANS',
-    'CoF_LP': 'CoF_LP_LOANS',
-    'Net_Fee_Income': 'NET_FEE_INCOME_LOANS',
-    'Interest_Income': 'INTEREST_INCOME_LOANS',
-    'Net_Interest_Income': 'NET_INTEREST_INCOME_LOANS'
-})
+# Step 3: Adjust VALUE for specific metric and country
+def adjust_value(row):
+    if row['Country'] in ['Indonesia', 'Philippines'] and row['Finance_Data_USD'] == "New Card Sales (000's)":
+        return row['Value'] * 1000
+    return row['Value']
 
-df_tm1 = df_tm1.rename(columns={
-    'COUNTRY1': 'COUNTRY',
-    'Rewards_Expense_USDm': 'REWARDS_EXPENSE_USDm',
-    'Spend_USDm': 'SPEND_USDm'
-})
+df['VALUE'] = df.apply(adjust_value, axis=1)
 
-# 4. Merge cards with loans on COUNTRY and DATE
-merged_df = df_cards.merge(
-    df_loans,
-    on=['COUNTRY', 'DATE'],
-    how='left'
+# Step 4: Create datetime1 and last-day-of-month date
+df['datetime1'] = df['Date']
+df['Date'] = df['datetime1'] + pd.offsets.MonthEnd(0)
+
+# Step 5: Rename metric
+df['Metric'] = df['Finance_Data_USD'].apply(
+    lambda x: "New Card Accounts (#)" if x == "New Card Accounts (000's)" else x
 )
 
-# 5. Merge with TM1 data
-merged_df = merged_df.merge(
-    df_tm1,
-    on=['COUNTRY', 'DATE'],
-    how='left'
-)
+# Step 6: Country mapping
+country_map = {
+    "UK (adjusted ex JLFS)": "UK",
+    "AMH": "AMH",
+    "HASE": "HASE",
+    "HASE HK": "HASE",
+    "Philippines": "MNL",
+    "Australia": "AUH",
+    "Egypt": "EGY",
+    "US (adjusted)": "USA",
+    "US": "USA",
+    "China": "AOC",
+    "Canada (adjusted)": "CAN",
+    "Focus market margins ex JLFS, US, China, CA": "GlobalExclUSAOCCANJLFS",
+    "Focus market margins ex. JLFS, CA": "GlobalExJLFSCA",
+    "Global ex Fr": "IWPB"
+}
+df['COUNTRY'] = df['Country'].map(country_map)
 
-# 6. Select and reorder final columns (optional)
-final_df = merged_df[[
-    'COUNTRY', 'DATE',
-    'REVENUE_CARDS', 'CoF_LP_CARDS', 'NET_FEE_INCOME_CARDS',
-    'INTEREST_INCOME_CARDS', 'EOP_GROSS_BALANCE_CARDS', 'NET_INTEREST_INCOME_CARDS',
-    'INTERCHANGE_RECEIVED_CARDS',
-    'REVENUE_LOANS', 'CoF_LP_LOANS', 'NET_FEE_INCOME_LOANS',
-    'INTEREST_INCOME_LOANS', 'NET_INTEREST_INCOME_LOANS',
-    'REWARDS_EXPENSE_USDm', 'SPEND_USDm'
-]]
+# Step 7: Group and aggregate
+grouped = df.groupby(['COUNTRY', 'Metric', 'Definition', 'Date'], dropna=False)['VALUE'].sum().reset_index()
+
+# Step 8: HAVING filter (valid COUNTRY only)
+valid_countries = [
+    'UK', 'AMH', 'HASE', 'MEX', 'UAE', 'SGH', 'MYH', 'INM', 'VNM',
+    'TWN', 'EGY', 'CAN', 'USA', 'AUH', 'AOC', 'IMO', 'MNL',
+    'GlobalExclUSAOCCANJLFS', 'GlobalExJLFSCA', 'IWPB'
+]
+grouped = grouped[grouped['COUNTRY'].isin(valid_countries)]
+
+# Step 9: Sort final output
+final_df = grouped.sort_values(by=['Metric', 'Definition', 'COUNTRY', 'Date'])
