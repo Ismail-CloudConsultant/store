@@ -1,52 +1,61 @@
 import pandas as pd
-import numpy as np
 
 # Step 1: Clean and prepare
 df = df.copy()
 df['Country'] = df['Country'].str.strip()
-df['Metric'] = df['Metric'].str.strip()
+df['Finance_Data_USD'] = df['Finance_Data_USD'].str.strip()
 df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
 
-# Step 2: Filter only needed metrics
-valid_metrics = [
-    'Revenue', 'CoF + LP', 'Net Fee Income', 'Interest Income', 'Net Interest Income'
-]
-df = df[df['Metric'].isin(valid_metrics)]
+# Step 2: Filter for relevant metrics
+metrics_filter = ['Rewards Expense ($m)', 'Spend ($m)']
+df = df[df['Finance_Data_USD'].isin(metrics_filter)]
 
-# Step 3: Group by Country, Metric, Date and sum values
-grouped = df.groupby(['Country', 'Date', 'Metric'])['Value'].sum().reset_index()
+# Step 3: Group and sum values
+grouped = df.groupby(['Country', 'Date', 'Finance_Data_USD'])['Value'].sum().reset_index()
 
-# Step 4: Pivot Metric values to columns
+# Step 4: Pivot to wide format
 pivot_df = grouped.pivot_table(
     index=['Country', 'Date'],
-    columns='Metric',
+    columns='Finance_Data_USD',
     values='Value',
     fill_value=0
 ).reset_index()
 
-# Step 5: Map COUNTRY1 values
-country_map = {
-    'US': 'USA',
-    'Canada': 'CAN'
-}
-pivot_df['COUNTRY1'] = pivot_df['Country'].map(country_map).fillna(pivot_df['Country'])
-
-# Step 6: Add PRODUCT column
-pivot_df['PRODUCT'] = 'LOANS'
-
-# Step 7: Rename columns to match SQL output
+# Step 5: Rename columns to match SQL output
 pivot_df = pivot_df.rename(columns={
-    'Country': 'COUNTRY',
-    'Revenue': 'Revenue',
-    'CoF + LP': 'CoF_LP',
-    'Net Fee Income': 'Net_Fee_Income',
-    'Interest Income': 'Interest_Income',
-    'Net Interest Income': 'Net_Interest_Income'
+    'Rewards Expense ($m)': 'Rewards_Expense_USDm',
+    'Spend ($m)': 'Spend_USDm'
 })
 
-# Step 8: Final column ordering and sorting
-final_df = pivot_df[[
-    'COUNTRY1', 'COUNTRY', 'PRODUCT', 'Date',
-    'Revenue', 'CoF_LP', 'Net_Fee_Income', 'Interest_Income', 'Net_Interest_Income'
-]].sort_values(by=['COUNTRY', 'Date'])
+# Step 6: Map COUNTRY1 codes
+country_map = {
+    "US (adjusted)": "USA",
+    "Canada (adjusted)": "CAN",
+    "Vietnam": "VNM",
+    "UK (adjusted ex JLFS)": "UK",
+    "UK (excl. JLFS)": "UK",
+    "Taiwan": "TWN",
+    "Singapore": "SGH",
+    "Mexico": "MEX",
+    "Malaysia": "MYH",
+    "India": "INM",
+    "Egypt": "EGY",
+    "China": "AOC",
+    "Australia": "AUH",
+    "UAE": "UAE",
+    "HASE": "HASE",
+    "AMH": "AMH",
+    "Indonesia": "IMO",
+    "Philippines": "MNL"
+}
+pivot_df['COUNTRY1'] = pivot_df['Country'].map(country_map)
+
+# Step 7: Filter for desired COUNTRY1 values only
+valid_country1 = ['UK','AMH','HASE','MEX','UAE','SGH','MYH','INM','VNM','TWN','EGY','CAN','USA','AUH','AOC', 'IMO', 'MNL']
+filtered_df = pivot_df[pivot_df['COUNTRY1'].isin(valid_country1)]
+
+# Step 8: Final column order and sorting
+final_df = filtered_df[[
+    'COUNTRY1', 'Country', 'Date', 'Rewards_Expense_USDm', 'Spend_USDm'
+]].sort_values(by=['Country', 'Date'])
