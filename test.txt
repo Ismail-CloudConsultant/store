@@ -1,78 +1,27 @@
 import pandas as pd
+import numpy as np
+from pandas.tseries.offsets import MonthEnd
 
-def sql_merge_pandas(df_target, df_source, merge_keys):
-    # Step 1: Outer join to simulate MERGE
-    merged = pd.merge(
-        df_target, df_source,
-        on=merge_keys,
-        how='outer',
-        suffixes=('_t', '_s'),
-        indicator=True
+# Assuming your dataframe is named:
+# df = pd.read_csv(...) or pd.read_gbq(...) etc.
+
+# 1. Filter for n_mob1 in (1, 3)
+df_filtered = df[df['n_mob1'].isin([1, 3])].copy()
+
+# 2. Trim Source_File and rename to Country
+df_filtered['Country'] = df_filtered['Source_File'].astype(str).str.strip()
+
+# 3. Convert acq_mon to a proper date ending on the last day of the month
+df_filtered['acq_mon'] = pd.to_datetime(df_filtered['acq_mon'].astype(str) + '28', format='%Y%m%d') + MonthEnd(0)
+
+# 4. Group and aggregate
+df_grouped = (
+    df_filtered
+    .groupby(['Country', 'n_mob1', 'm_mon', 'acq_mon'], dropna=False)
+    .agg(
+        Total_Accnt=('accts', 'sum'),
+        Ever_Activation=('ever_activation_flag', lambda x: np.nansum(pd.to_numeric(x, errors='coerce'))),
+        Ever_Debit_Active=('ever_debit_active', lambda x: np.nansum(pd.to_numeric(x, errors='coerce')))
     )
-
-    # Step 2: Identify columns to update/insert
-    all_cols = df_target.columns
-
-    # Step 3: Prepare insert records (from source only)
-    df_insert = merged[merged['_merge'] == 'right_only'].copy()
-
-    insert_cols = []
-    for col in all_cols:
-        if col + '_s' in df_insert.columns:
-            insert_cols.append(col + '_s')
-        elif col in df_insert.columns:
-            insert_cols.append(col)
-        else:
-            df_insert[col + '_missing'] = pd.NA
-            insert_cols.append(col + '_missing')
-
-    df_insert_clean = df_insert[insert_cols].copy()
-    df_insert_clean.columns = all_cols
-
-    # Step 4: Prepare update records (from source)
-    df_update = merged[merged['_merge'] == 'both'].copy()
-
-    update_cols = []
-    for col in all_cols:
-        if col + '_s' in df_update.columns:
-            update_cols.append(col + '_s')
-        elif col + '_t' in df_update.columns:
-            update_cols.append(col + '_t')
-        else:
-            df_update[col + '_missing'] = pd.NA
-            update_cols.append(col + '_missing')
-
-    df_update_clean = df_update[update_cols].copy()
-    df_update_clean.columns = all_cols
-
-    # Step 5: Keep unmatched target rows
-    df_target_unmatched = merged[merged['_merge'] == 'left_only']
-
-    target_cols = []
-    for col in all_cols:
-        if col + '_t' in df_target_unmatched.columns:
-            target_cols.append(col + '_t')
-        elif col in df_target_unmatched.columns:
-            target_cols.append(col)
-        else:
-            df_target_unmatched[col + '_missing'] = pd.NA
-            target_cols.append(col + '_missing')
-
-    df_target_unmatched_clean = df_target_unmatched[target_cols].copy()
-    df_target_unmatched_clean.columns = all_cols
-
-    # Step 6: Final merged DataFrame
-    df_final = pd.concat([
-        df_target_unmatched_clean,
-        df_update_clean,
-        df_insert_clean
-    ], ignore_index=True)
-
-    return df_final
-
-
-# df_target = your existing DataFrame
-# df_source = your new DataFrame with updates
-# merge_keys = list of primary key columns (e.g., ['Customer_ID', 'Product_Code'])
-
-df_merged = sql_merge_pandas(df_target, df_source, merge_keys=['Source_File', 'm_mon', 'n_mob1', 'acq_mon', 'Acquisition_Channel', 'Customer_Type', 'Product_Code', 'Card_Type'])
+    .reset_index()
+)
