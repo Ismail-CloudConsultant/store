@@ -1,40 +1,26 @@
 import pandas as pd
 
-# Assume these are your source and target dataframes
-df_target = df_target.copy()
-df_source = df_source.copy()
+# Assuming df_raw is your original DataFrame
+df = df_raw.copy()
 
-# Step 1: Strip text fields
-text_cols = ['Source_File', 'Customer_Type', 'Product_Code', 'Card_Type']
-for col in text_cols:
-    df_target[col] = df_target[col].astype(str).str.strip()
-    df_source[col] = df_source[col].astype(str).str.strip()
+# Step 1: Convert data types
+df['Data_Upload_TS'] = pd.to_datetime(df['Data_Upload_TS'], errors='coerce')
+df['m_mon'] = pd.to_numeric(df['m_mon'], errors='coerce', downcast='integer')
+df['n_mob1'] = pd.to_numeric(df['n_mob1'], errors='coerce', downcast='integer')
 
-# Step 2: Define merge keys
-merge_keys = [
-    'Source_File', 'm_mon', 'n_mob1', 'acq_mon',
+# Convert other fields to numeric
+df['accts'] = pd.to_numeric(df['accts'], errors='coerce', downcast='integer')
+df['ever_debit_active'] = pd.to_numeric(df['ever_debit_active'], errors='coerce')
+df['ever_stmt_active'] = pd.to_numeric(df['ever_stmt_active'], errors='coerce')
+df['ever_activation_flag'] = pd.to_numeric(df['ever_activation_flag'], errors='coerce')
+
+# Step 2: Group and aggregate
+grouped = df.groupby([
+    'Data_Upload_TS', 'Source_File', 'm_mon', 'n_mob1', 'acq_mon',
     'Acquisition_Channel', 'Customer_Type', 'Product_Code', 'Card_Type'
-]
-
-# Step 3: Merge on keys (outer join to allow insert + update detection)
-merged = pd.merge(df_target, df_source, on=merge_keys, how='outer', suffixes=('_t', '_s'), indicator=True)
-
-# Step 4: Update existing records
-df_update = merged[merged['_merge'] == 'both'].copy()
-df_update['accts'] = df_update['accts_s']
-df_update['ever_activation_flag'] = df_update['ever_activation_flag_s']
-df_update['ever_debit_active'] = df_update['ever_debit_active_s']
-df_update['ever_stmt_active'] = df_update['ever_stmt_active_s']
-
-# Step 5: Insert new records
-df_insert = merged[merged['_merge'] == 'right_only']
-insert_cols = df_target.columns  # Ensure it matches target table structure
-df_insert_clean = df_insert[[col + '_s' if col in df_source.columns else col for col in insert_cols]]
-df_insert_clean.columns = insert_cols
-
-# Step 6: Combine updated + new rows with unmatched old records
-df_final = pd.concat([
-    df_target[~df_target.set_index(merge_keys).index.isin(df_update.set_index(merge_keys).index)],
-    df_update[df_target.columns],
-    df_insert_clean
-], ignore_index=True)
+], dropna=False).agg({
+    'accts': 'sum',
+    'ever_debit_active': 'sum',
+    'ever_stmt_active': 'sum',
+    'ever_activation_flag': 'sum'
+}).reset_index()
