@@ -1,17 +1,6 @@
-import pandas as pd
-
-# --- Step 1: Filter df_cards to exclude 'UK RFB'
-df_cards = df_cards[df_cards['COUNTRY1'] != 'UK RFB'].copy()
-
-# --- Step 2: Standardize date column (get last day of month)
-df_cards['DATE'] = pd.to_datetime(df_cards['Date']) + pd.offsets.MonthEnd(0)
-df_loans['DATE'] = pd.to_datetime(df_loans['Date']) + pd.offsets.MonthEnd(0)
-df_tm1['DATE'] = pd.to_datetime(df_tm1['Date']) + pd.offsets.MonthEnd(0)
-
-# --- Step 3: Rename columns before merge to match SQL aliases
 df_cards = df_cards.rename(columns={
     'COUNTRY1': 'COUNTRY',
-    'REVENUE': 'REVENUE_CARDS',
+    'Revenue': 'REVENUE_CARDS',
     'CoF_LP': 'CoF_LP_CARDS',
     'Net_Fee_Income': 'NET_FEE_INCOME_CARDS',
     'Interest_Income': 'INTEREST_INCOME_CARDS',
@@ -22,7 +11,7 @@ df_cards = df_cards.rename(columns={
 
 df_loans = df_loans.rename(columns={
     'COUNTRY1': 'COUNTRY',
-    'REVENUE': 'REVENUE_LOANS',
+    'Revenue': 'REVENUE_LOANS',
     'CoF_LP': 'CoF_LP_LOANS',
     'Net_Fee_Income': 'NET_FEE_INCOME_LOANS',
     'Interest_Income': 'INTEREST_INCOME_LOANS',
@@ -34,25 +23,3 @@ df_tm1 = df_tm1.rename(columns={
     'Rewards_Expense_USDm': 'REWARDS_EXPENSE_USDm',
     'Spend_USDm': 'SPEND_USDm'
 })
-
-# --- Step 4: Merge the dataframes
-merged_df = df_cards.merge(
-    df_loans,
-    on=['COUNTRY', 'DATE'],
-    how='left'
-).merge(
-    df_tm1,
-    on=['COUNTRY', 'DATE'],
-    how='left'
-)
-
-# --- Step 5: Select required columns (optional, clean up)
-final_df = merged_df[[
-    'COUNTRY', 'DATE',
-    'REVENUE_CARDS', 'CoF_LP_CARDS', 'NET_FEE_INCOME_CARDS',
-    'INTEREST_INCOME_CARDS', 'EOP_GROSS_BALANCE_CARDS', 'NET_INTEREST_INCOME_CARDS',
-    'INTERCHANGE_RECEIVED_CARDS',
-    'REVENUE_LOANS', 'CoF_LP_LOANS', 'NET_FEE_INCOME_LOANS',
-    'INTEREST_INCOME_LOANS', 'NET_INTEREST_INCOME_LOANS',
-    'REWARDS_EXPENSE_USDm', 'SPEND_USDm'
-]]
