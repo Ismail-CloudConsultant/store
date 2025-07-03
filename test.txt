@@ -1,50 +1,52 @@
 import pandas as pd
 import numpy as np
 
-# Step 1: Load and clean data
+# Step 1: Clean and prepare
 df = df.copy()
 df['Country'] = df['Country'].str.strip()
 df['Metric'] = df['Metric'].str.strip()
 df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
 
-# Step 2: Filter relevant metrics
+# Step 2: Filter only needed metrics
 valid_metrics = [
-    'Revenue', 'CoF + LP', 'Net Fee Income', 'Interest Income',
-    'EOP Gross Balance', 'Net Interest income', 'INTERCHANGE_RECEIVED'
+    'Revenue', 'CoF + LP', 'Net Fee Income', 'Interest Income', 'Net Interest Income'
 ]
 df = df[df['Metric'].isin(valid_metrics)]
 
-# Step 3: Group and pivot
-pivot_df = df.groupby(['Country', 'Date', 'Metric'])['Value'].sum().reset_index()
-pivot_df = pivot_df.pivot_table(index=['Country', 'Date'], columns='Metric', values='Value', fill_value=0).reset_index()
+# Step 3: Group by Country, Metric, Date and sum values
+grouped = df.groupby(['Country', 'Date', 'Metric'])['Value'].sum().reset_index()
 
-# Step 4: Add COUNTRY1 mapping
+# Step 4: Pivot Metric values to columns
+pivot_df = grouped.pivot_table(
+    index=['Country', 'Date'],
+    columns='Metric',
+    values='Value',
+    fill_value=0
+).reset_index()
+
+# Step 5: Map COUNTRY1 values
 country_map = {
-    'Indonesia': 'IMO',
-    'Philippines': 'MNL',
-    'JLFS': 'JLFS'
+    'US': 'USA',
+    'Canada': 'CAN'
 }
 pivot_df['COUNTRY1'] = pivot_df['Country'].map(country_map).fillna(pivot_df['Country'])
 
-# Step 5: Add PRODUCT column
-pivot_df['PRODUCT'] = 'CARDS'
+# Step 6: Add PRODUCT column
+pivot_df['PRODUCT'] = 'LOANS'
 
-# Step 6: Rename columns to match SQL output
+# Step 7: Rename columns to match SQL output
 pivot_df = pivot_df.rename(columns={
     'Country': 'COUNTRY',
     'Revenue': 'Revenue',
     'CoF + LP': 'CoF_LP',
     'Net Fee Income': 'Net_Fee_Income',
     'Interest Income': 'Interest_Income',
-    'EOP Gross Balance': 'EOP_Gross_Balance',
-    'Net Interest income': 'Net_Interest_Income',
-    'INTERCHANGE_RECEIVED': 'INTERCHANGE_RECEIVED'
+    'Net Interest Income': 'Net_Interest_Income'
 })
 
-# Step 7: Reorder columns
+# Step 8: Final column ordering and sorting
 final_df = pivot_df[[
     'COUNTRY1', 'COUNTRY', 'PRODUCT', 'Date',
-    'Revenue', 'CoF_LP', 'Net_Fee_Income', 'Interest_Income',
-    'EOP_Gross_Balance', 'Net_Interest_Income', 'INTERCHANGE_RECEIVED'
+    'Revenue', 'CoF_LP', 'Net_Fee_Income', 'Interest_Income', 'Net_Interest_Income'
 ]].sort_values(by=['COUNTRY', 'Date'])
