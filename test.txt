@@ -1,61 +1,58 @@
 import pandas as pd
 
-# Step 1: Clean and prepare
-df = df.copy()
-df['Country'] = df['Country'].str.strip()
-df['Finance_Data_USD'] = df['Finance_Data_USD'].str.strip()
-df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
+# --- Step 1: Filter df_cards to exclude 'UK RFB'
+df_cards = df_cards[df_cards['COUNTRY1'] != 'UK RFB'].copy()
 
-# Step 2: Filter for relevant metrics
-metrics_filter = ['Rewards Expense ($m)', 'Spend ($m)']
-df = df[df['Finance_Data_USD'].isin(metrics_filter)]
+# --- Step 2: Standardize date column (get last day of month)
+df_cards['DATE'] = pd.to_datetime(df_cards['Date']) + pd.offsets.MonthEnd(0)
+df_loans['DATE'] = pd.to_datetime(df_loans['Date']) + pd.offsets.MonthEnd(0)
+df_tm1['DATE'] = pd.to_datetime(df_tm1['Date']) + pd.offsets.MonthEnd(0)
 
-# Step 3: Group and sum values
-grouped = df.groupby(['Country', 'Date', 'Finance_Data_USD'])['Value'].sum().reset_index()
-
-# Step 4: Pivot to wide format
-pivot_df = grouped.pivot_table(
-    index=['Country', 'Date'],
-    columns='Finance_Data_USD',
-    values='Value',
-    fill_value=0
-).reset_index()
-
-# Step 5: Rename columns to match SQL output
-pivot_df = pivot_df.rename(columns={
-    'Rewards Expense ($m)': 'Rewards_Expense_USDm',
-    'Spend ($m)': 'Spend_USDm'
+# --- Step 3: Rename columns before merge to match SQL aliases
+df_cards = df_cards.rename(columns={
+    'COUNTRY1': 'COUNTRY',
+    'REVENUE': 'REVENUE_CARDS',
+    'CoF_LP': 'CoF_LP_CARDS',
+    'Net_Fee_Income': 'NET_FEE_INCOME_CARDS',
+    'Interest_Income': 'INTEREST_INCOME_CARDS',
+    'EOP_Gross_Balance': 'EOP_GROSS_BALANCE_CARDS',
+    'Net_Interest_Income': 'NET_INTEREST_INCOME_CARDS',
+    'INTERCHANGE_RECEIVED': 'INTERCHANGE_RECEIVED_CARDS'
 })
 
-# Step 6: Map COUNTRY1 codes
-country_map = {
-    "US (adjusted)": "USA",
-    "Canada (adjusted)": "CAN",
-    "Vietnam": "VNM",
-    "UK (adjusted ex JLFS)": "UK",
-    "UK (excl. JLFS)": "UK",
-    "Taiwan": "TWN",
-    "Singapore": "SGH",
-    "Mexico": "MEX",
-    "Malaysia": "MYH",
-    "India": "INM",
-    "Egypt": "EGY",
-    "China": "AOC",
-    "Australia": "AUH",
-    "UAE": "UAE",
-    "HASE": "HASE",
-    "AMH": "AMH",
-    "Indonesia": "IMO",
-    "Philippines": "MNL"
-}
-pivot_df['COUNTRY1'] = pivot_df['Country'].map(country_map)
+df_loans = df_loans.rename(columns={
+    'COUNTRY1': 'COUNTRY',
+    'REVENUE': 'REVENUE_LOANS',
+    'CoF_LP': 'CoF_LP_LOANS',
+    'Net_Fee_Income': 'NET_FEE_INCOME_LOANS',
+    'Interest_Income': 'INTEREST_INCOME_LOANS',
+    'Net_Interest_Income': 'NET_INTEREST_INCOME_LOANS'
+})
 
-# Step 7: Filter for desired COUNTRY1 values only
-valid_country1 = ['UK','AMH','HASE','MEX','UAE','SGH','MYH','INM','VNM','TWN','EGY','CAN','USA','AUH','AOC', 'IMO', 'MNL']
-filtered_df = pivot_df[pivot_df['COUNTRY1'].isin(valid_country1)]
+df_tm1 = df_tm1.rename(columns={
+    'COUNTRY1': 'COUNTRY',
+    'Rewards_Expense_USDm': 'REWARDS_EXPENSE_USDm',
+    'Spend_USDm': 'SPEND_USDm'
+})
 
-# Step 8: Final column order and sorting
-final_df = filtered_df[[
-    'COUNTRY1', 'Country', 'Date', 'Rewards_Expense_USDm', 'Spend_USDm'
-]].sort_values(by=['Country', 'Date'])
+# --- Step 4: Merge the dataframes
+merged_df = df_cards.merge(
+    df_loans,
+    on=['COUNTRY', 'DATE'],
+    how='left'
+).merge(
+    df_tm1,
+    on=['COUNTRY', 'DATE'],
+    how='left'
+)
+
+# --- Step 5: Select required columns (optional, clean up)
+final_df = merged_df[[
+    'COUNTRY', 'DATE',
+    'REVENUE_CARDS', 'CoF_LP_CARDS', 'NET_FEE_INCOME_CARDS',
+    'INTEREST_INCOME_CARDS', 'EOP_GROSS_BALANCE_CARDS', 'NET_INTEREST_INCOME_CARDS',
+    'INTERCHANGE_RECEIVED_CARDS',
+    'REVENUE_LOANS', 'CoF_LP_LOANS', 'NET_FEE_INCOME_LOANS',
+    'INTEREST_INCOME_LOANS', 'NET_INTEREST_INCOME_LOANS',
+    'REWARDS_EXPENSE_USDm', 'SPEND_USDm'
+]]
