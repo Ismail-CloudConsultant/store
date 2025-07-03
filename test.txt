@@ -1,72 +1,26 @@
 import pandas as pd
 
-# Step 1: Copy and strip strings
+# Assuming df_raw is your original DataFrame
 df = df_raw.copy()
-df['Country'] = df['Country'].str.strip()
-df['Finance_Data_USD'] = df['Finance_Data_USD'].str.strip()
-df['Definition'] = df['Definition'].astype(str).str.strip()
-df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-df['Value'] = pd.to_numeric(df['Value'].astype(str).str.strip(), errors='coerce')
 
-# Step 2: Filter out 'nan'
-df = df[df['Finance_Data_USD'].str.lower() != 'nan']
+# Step 1: Convert data types
+df['Data_Upload_TS'] = pd.to_datetime(df['Data_Upload_TS'], errors='coerce')
+df['m_mon'] = pd.to_numeric(df['m_mon'], errors='coerce', downcast='integer')
+df['n_mob1'] = pd.to_numeric(df['n_mob1'], errors='coerce', downcast='integer')
 
-# Step 3: Replace specific metrics
-def transform_metric(row):
-    if row['Country'] in ['Taiwan', 'Indonesia', 'Philippines']:
-        if row['Finance_Data_USD'] == "Total Cards in force (000's)":
-            return 'Total Cards in force (#)'
-        elif row['Finance_Data_USD'] == "New Card Sales (000's)":
-            return 'New Card Sales (#)'
-    return row['Finance_Data_USD']
+# Convert other fields to numeric
+df['accts'] = pd.to_numeric(df['accts'], errors='coerce', downcast='integer')
+df['ever_debit_active'] = pd.to_numeric(df['ever_debit_active'], errors='coerce')
+df['ever_stmt_active'] = pd.to_numeric(df['ever_stmt_active'], errors='coerce')
+df['ever_activation_flag'] = pd.to_numeric(df['ever_activation_flag'], errors='coerce')
 
-df['Finance_Data_USD'] = df.apply(transform_metric, axis=1)
-
-# Step 4: Adjust value for specific metric
-def adjust_value(row):
-    if row['Country'] in ['Indonesia', 'Philippines'] and row['Finance_Data_USD'] == "New Card Sales (000's)":
-        return row['Value'] * 1000
-    return row['Value']
-
-df['VALUE'] = df.apply(adjust_value, axis=1)
-
-# Step 5: Create datetime1 and last day of month
-df['datetime1'] = df['Date']
-df['Date'] = df['datetime1'] + pd.offsets.MonthEnd(0)
-
-# Step 6: Update METRIC name
-df['Metric'] = df['Finance_Data_USD'].apply(
-    lambda x: 'Mortgage Drawdowns (Volume) ($m)' if x == 'Drawdowns (Volume) ($m)' else x
-)
-
-# Step 7: Map COUNTRY names
-country_map = {
-    "UK (adjusted ex JLFS)": "UK",
-    "AMH": "AMH",
-    "HASE": "HASE",
-    "HASE HK": "HASE",
-    "Australia": "AUH",
-    "Egypt": "EGY",
-    "US (adjusted)": "USA",
-    "US": "USA",
-    "China": "AOC",
-    "Canada (adjusted)": "CAN",
-    "Focus market margins ex JLFS, US, China, CA": "GlobalExclUSAOCCANJLFS",
-    "Focus market margins ex. JLFS, CA": "GlobalExJLFSCA",
-    "Global ex Fr": "IWPB"
-}
-df['COUNTRY'] = df['Country'].map(country_map).fillna(df['Country'])
-
-# Step 8: Group and aggregate
-grouped = df.groupby(['COUNTRY', 'Metric', 'Definition', 'Date'], dropna=False)['VALUE'].sum().reset_index()
-
-# Step 9: Filter by allowed COUNTRY list
-valid_countries = [
-    'UK','AMH','HASE','MEX','UAE','SGH','MYH','INM','VNM',
-    'TWN','EGY','CAN','USA','AUH','AOC','IMO','MNL',
-    'GlobalExclUSAOCCANJLFS','GlobalExJLFSCA','IWPB'
-]
-grouped = grouped[grouped['COUNTRY'].isin(valid_countries)]
-
-# Step 10: Sort the output
-final_df = grouped.sort_values(by=['Metric', 'Definition', 'COUNTRY', 'Date'])
+# Step 2: Group and aggregate
+grouped = df.groupby([
+    'Data_Upload_TS', 'Source_File', 'm_mon', 'n_mob1', 'acq_mon',
+    'Acquisition_Channel', 'Customer_Type', 'Product_Code', 'Card_Type'
+], dropna=False).agg({
+    'accts': 'sum',
+    'ever_debit_active': 'sum',
+    'ever_stmt_active': 'sum',
+    'ever_activation_flag': 'sum'
+}).reset_index()
