@@ -1,6 +1,16 @@
+import pandas as pd
+
+# 1. Filter cards data where COUNTRY1 != 'UK RFB'
+df_cards = df_cards[df_cards['COUNTRY1'] != 'UK RFB'].copy()
+
+# 2. Add month-end date column to all 3 dataframes
+for df in [df_cards, df_loans, df_tm1]:
+    df['DATE'] = pd.to_datetime(df['Date'], errors='coerce') + pd.offsets.MonthEnd(0)
+
+# 3. Rename columns to avoid conflicts and match SQL aliases
 df_cards = df_cards.rename(columns={
     'COUNTRY1': 'COUNTRY',
-    'Revenue': 'REVENUE_CARDS',
+    'REVENUE': 'REVENUE_CARDS',
     'CoF_LP': 'CoF_LP_CARDS',
     'Net_Fee_Income': 'NET_FEE_INCOME_CARDS',
     'Interest_Income': 'INTEREST_INCOME_CARDS',
@@ -11,7 +21,7 @@ df_cards = df_cards.rename(columns={
 
 df_loans = df_loans.rename(columns={
     'COUNTRY1': 'COUNTRY',
-    'Revenue': 'REVENUE_LOANS',
+    'REVENUE': 'REVENUE_LOANS',
     'CoF_LP': 'CoF_LP_LOANS',
     'Net_Fee_Income': 'NET_FEE_INCOME_LOANS',
     'Interest_Income': 'INTEREST_INCOME_LOANS',
@@ -23,3 +33,28 @@ df_tm1 = df_tm1.rename(columns={
     'Rewards_Expense_USDm': 'REWARDS_EXPENSE_USDm',
     'Spend_USDm': 'SPEND_USDm'
 })
+
+# 4. Merge cards with loans on COUNTRY and DATE
+merged_df = df_cards.merge(
+    df_loans,
+    on=['COUNTRY', 'DATE'],
+    how='left'
+)
+
+# 5. Merge with TM1 data
+merged_df = merged_df.merge(
+    df_tm1,
+    on=['COUNTRY', 'DATE'],
+    how='left'
+)
+
+# 6. Select and reorder final columns (optional)
+final_df = merged_df[[
+    'COUNTRY', 'DATE',
+    'REVENUE_CARDS', 'CoF_LP_CARDS', 'NET_FEE_INCOME_CARDS',
+    'INTEREST_INCOME_CARDS', 'EOP_GROSS_BALANCE_CARDS', 'NET_INTEREST_INCOME_CARDS',
+    'INTERCHANGE_RECEIVED_CARDS',
+    'REVENUE_LOANS', 'CoF_LP_LOANS', 'NET_FEE_INCOME_LOANS',
+    'INTEREST_INCOME_LOANS', 'NET_INTEREST_INCOME_LOANS',
+    'REWARDS_EXPENSE_USDm', 'SPEND_USDm'
+]]
