@@ -69,3 +69,10 @@ def sql_merge_pandas(df_target, df_source, merge_keys):
     ], ignore_index=True)
 
     return df_final
+
+
+# df_target = your existing DataFrame
+# df_source = your new DataFrame with updates
+# merge_keys = list of primary key columns (e.g., ['Customer_ID', 'Product_Code'])
+
+df_merged = sql_merge_pandas(df_target, df_source, merge_keys=['Source_File', 'm_mon', 'n_mob1', 'acq_mon', 'Acquisition_Channel', 'Customer_Type', 'Product_Code', 'Card_Type'])
