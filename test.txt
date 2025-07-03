@@ -1,18 +1,71 @@
-# This helps you handle all columns correctly
-insert_cols = df_target.columns
+import pandas as pd
 
-# Build a mapping from target col → source col (with _s if needed)
-source_cols = []
-for col in insert_cols:
-    if col + '_s' in df_insert.columns:
-        source_cols.append(col + '_s')
-    elif col in df_insert.columns:
-        source_cols.append(col)
-    else:
-        # Fill missing columns with NaNs
-        df_insert[col + '_missing'] = pd.NA
-        source_cols.append(col + '_missing')
+def sql_merge_pandas(df_target, df_source, merge_keys):
+    # Step 1: Outer join to simulate MERGE
+    merged = pd.merge(
+        df_target, df_source,
+        on=merge_keys,
+        how='outer',
+        suffixes=('_t', '_s'),
+        indicator=True
+    )
 
-# Create df_insert_clean with aligned columns
-df_insert_clean = df_insert[source_cols].copy()
-df_insert_clean.columns = insert_cols  # Rename to match df_target structure
+    # Step 2: Identify columns to update/insert
+    all_cols = df_target.columns
+
+    # Step 3: Prepare insert records (from source only)
+    df_insert = merged[merged['_merge'] == 'right_only'].copy()
+
+    insert_cols = []
+    for col in all_cols:
+        if col + '_s' in df_insert.columns:
+            insert_cols.append(col + '_s')
+        elif col in df_insert.columns:
+            insert_cols.append(col)
+        else:
+            df_insert[col + '_missing'] = pd.NA
+            insert_cols.append(col + '_missing')
+
+    df_insert_clean = df_insert[insert_cols].copy()
+    df_insert_clean.columns = all_cols
+
+    # Step 4: Prepare update records (from source)
+    df_update = merged[merged['_merge'] == 'both'].copy()
+
+    update_cols = []
+    for col in all_cols:
+        if col + '_s' in df_update.columns:
+            update_cols.append(col + '_s')
+        elif col + '_t' in df_update.columns:
+            update_cols.append(col + '_t')
+        else:
+            df_update[col + '_missing'] = pd.NA
+            update_cols.append(col + '_missing')
+
+    df_update_clean = df_update[update_cols].copy()
+    df_update_clean.columns = all_cols
+
+    # Step 5: Keep unmatched target rows
+    df_target_unmatched = merged[merged['_merge'] == 'left_only']
+
+    target_cols = []
+    for col in all_cols:
+        if col + '_t' in df_target_unmatched.columns:
+            target_cols.append(col + '_t')
+        elif col in df_target_unmatched.columns:
+            target_cols.append(col)
+        else:
+            df_target_unmatched[col + '_missing'] = pd.NA
+            target_cols.append(col + '_missing')
+
+    df_target_unmatched_clean = df_target_unmatched[target_cols].copy()
+    df_target_unmatched_clean.columns = all_cols
+
+    # Step 6: Final merged DataFrame
+    df_final = pd.concat([
+        df_target_unmatched_clean,
+        df_update_clean,
+        df_insert_clean
+    ], ignore_index=True)
+
+    return df_final
