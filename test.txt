@@ -1,52 +1,50 @@
 import pandas as pd
 import numpy as np
 
-# Trim columns
-df['Country_CDE'] = df['Country_cde'].str.strip()
-df['ASSET'] = df['ASSET'].astype(str).str.strip()
-df['Data_Upload_TS'] = pd.to_datetime(df['Data_Upload_TS'], errors='coerce')
+# Step 1: Load and clean data
+df = df.copy()
+df['Country'] = df['Country'].str.strip()
+df['Metric'] = df['Metric'].str.strip()
+df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
 
-# Define country map for first SELECT
-country_map_main = {
-    'GBP': 'UK',
-    'HKD': 'AMH',
-    'MXN': 'MEX',
-    'AED': 'UAE',
-    'SGD': 'SGH',
-    'MYR': 'MYH',
-    'INR': 'INM',
-    'VND': 'VNM',
-    'TWD': 'TWN',
-    'AUD': 'AUH',
-    'EGP': 'EGY',
-    'CAD': 'CAN',
-    'USD': 'USA',
-    'CNY': 'AOC',
-    'IDR': 'IMO',
-    'PHP': 'MNL'
+# Step 2: Filter relevant metrics
+valid_metrics = [
+    'Revenue', 'CoF + LP', 'Net Fee Income', 'Interest Income',
+    'EOP Gross Balance', 'Net Interest income', 'INTERCHANGE_RECEIVED'
+]
+df = df[df['Metric'].isin(valid_metrics)]
+
+# Step 3: Group and pivot
+pivot_df = df.groupby(['Country', 'Date', 'Metric'])['Value'].sum().reset_index()
+pivot_df = pivot_df.pivot_table(index=['Country', 'Date'], columns='Metric', values='Value', fill_value=0).reset_index()
+
+# Step 4: Add COUNTRY1 mapping
+country_map = {
+    'Indonesia': 'IMO',
+    'Philippines': 'MNL',
+    'JLFS': 'JLFS'
 }
+pivot_df['COUNTRY1'] = pivot_df['Country'].map(country_map).fillna(pivot_df['Country'])
 
-# Define country map for second SELECT (HKD → HASE)
-country_map_hase = {
-    'HKD': 'HASE'
-}
+# Step 5: Add PRODUCT column
+pivot_df['PRODUCT'] = 'CARDS'
 
-# Filter for main query
-main_countries = list(country_map_main.keys())
-df_main = df[df['Country_CDE'].isin(main_countries)].copy()
-df_main['COUNTRY'] = df_main['Country_CDE'].map(country_map_main)
-df_main['FX'] = pd.to_numeric(df_main['ASSET'], errors='coerce')
-df_main['Date'] = df_main['Data_Upload_TS'] + pd.offsets.MonthEnd(0)
+# Step 6: Rename columns to match SQL output
+pivot_df = pivot_df.rename(columns={
+    'Country': 'COUNTRY',
+    'Revenue': 'Revenue',
+    'CoF + LP': 'CoF_LP',
+    'Net Fee Income': 'Net_Fee_Income',
+    'Interest Income': 'Interest_Income',
+    'EOP Gross Balance': 'EOP_Gross_Balance',
+    'Net Interest income': 'Net_Interest_Income',
+    'INTERCHANGE_RECEIVED': 'INTERCHANGE_RECEIVED'
+})
 
-# Filter for second part (just HKD → HASE)
-df_hase = df[df['Country_CDE'] == 'HKD'].copy()
-df_hase['COUNTRY'] = df_hase['Country_CDE'].map(country_map_hase)
-df_hase['FX'] = pd.to_numeric(df_hase['ASSET'], errors='coerce')
-df_hase['Date'] = df_hase['Data_Upload_TS'] + pd.offsets.MonthEnd(0)
-
-# Select final columns
-df_main = df_main[['Country_CDE', 'FX', 'Date', 'COUNTRY']]
-df_hase = df_hase[['Country_CDE', 'FX', 'Date', 'COUNTRY']]
-
-# Union All
-final_df = pd.concat([df_main, df_hase], ignore_index=True)
+# Step 7: Reorder columns
+final_df = pivot_df[[
+    'COUNTRY1', 'COUNTRY', 'PRODUCT', 'Date',
+    'Revenue', 'CoF_LP', 'Net_Fee_Income', 'Interest_Income',
+    'EOP_Gross_Balance', 'Net_Interest_Income', 'INTERCHANGE_RECEIVED'
+]].sort_values(by=['COUNTRY', 'Date'])
