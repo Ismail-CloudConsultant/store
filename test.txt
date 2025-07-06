@@ -1,24 +1,24 @@
 import pandas as pd
 
-# Ensure timestamp conversion
-df['Data_Upload_TS'] = pd.to_datetime(df['Data_Upload_TS'], errors='coerce')
+# Assuming df is your input DataFrame
+df['Final_Decision'] = df['Final_Decision'].astype(str).str.strip()
+df['Merchant_Country'] = df['Merchant_Country'].astype(str).str.strip()
+df['Card_Presence'] = df['Card_Presence'].astype(str).str.strip()
+df['Country'] = df['Source_File'].astype(str).str.strip()
+
+# Parse Auth_Month (e.g., 202407) as a date ending on 28th, then compute last day of month
+df['Auth_Month'] = df['Auth_Month'].astype(str)
+df['Date'] = pd.to_datetime(df['Auth_Month'] + '28', format='%Y%m%d', errors='coerce') + pd.offsets.MonthEnd(0)
 
 # Group and aggregate
 result_df = (
     df.groupby([
-        'Data_Upload_TS',
-        'Source_File',
-        'Auth_Month',
-        'Card_Type',
         'Final_Decision',
         'Merchant_Country',
-        'Transaction_Type',
         'Card_Presence',
-        'RECURRING_TRANSACTIONS'
+        'Country',
+        'Date'
     ], dropna=False)
-    .agg({
-        'Txn_Count': 'sum',
-        'Txn_USD_Amount': 'sum'
-    })
+    .agg({'Txn_Count': 'sum'})
     .reset_index()
 )
