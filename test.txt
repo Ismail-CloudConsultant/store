@@ -1,44 +1,51 @@
 import pandas as pd
-import numpy as np
+from pandas.tseries.offsets import MonthEnd
 
-# Assuming df is your loaded DataFrame
-df['Metric'] = df['Metric'].astype(str).str.strip()
-df['Source_File'] = df['Source_File'].astype(str).str.strip()
-df['Country'] = df['Country'].astype(str).str.strip()
-df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')  # Cast to datetime
+# --- Part 1: DEV_CHARGE_RATE_VOL_ASIA_RAW ---
+df_asia_raw = df_asia_raw[df_asia_raw['METRIC'].str.strip() != 'Total Accounts']
+df_asia_raw['DATE'] = pd.to_datetime(df_asia_raw['Date'], errors='coerce') + MonthEnd(0)
+df_asia_raw['BRAND'] = 'NA'
+df_asia_raw['COUNTRY'] = df_asia_raw['Source_File'].apply(lambda x: 'TWN' if x.strip() == 'TAI' else x.strip())
+df_asia_raw_grp = df_asia_raw.groupby(['DATE', 'COUNTRY', 'BRAND'], dropna=False)['Charge_Off_Volume'].sum().reset_index()
+df_asia_raw_grp['CHARGE_OFF_VOLUME'] = df_asia_raw_grp['Charge_Off_Volume']
+df_asia_raw_grp = df_asia_raw_grp[['DATE', 'BRAND', 'COUNTRY', 'CHARGE_OFF_VOLUME']]
 
-# Filter out rows where Value is 'nan' string and DATE starts with 'Unnamed'
-df = df[(df['Value'] != 'nan') & (~df['DATE'].astype(str).str.startswith('Unnamed'))]
+# --- Part 2: DEV_CHARGE_RATE_VOL_RAW ---
+def get_brand(sf):
+    sf = sf.strip()
+    return sf if sf in ['HSBC', 'MSB', 'FD'] else 'NA'
 
-# Convert Value column to float safely
-df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
+def get_country(sf):
+    sf = sf.strip()
+    if sf in ['HSBC', 'MSB', 'FD']:
+        return 'UK'
+    elif sf == 'US':
+        return 'USA'
+    else:
+        return sf
 
-# Create derived columns based on Metric
-df['Transaction_Count'] = np.where(
-    df['Metric'] == 'Transaction Count (#k)',
-    df['Value'] * 1000,
-    0
-)
+df_raw['DATE'] = pd.to_datetime(df_raw['DATE'], errors='coerce') + MonthEnd(0)
+df_raw['BRAND'] = df_raw['source_file'].apply(get_brand)
+df_raw['COUNTRY'] = df_raw['source_file'].apply(get_country)
+df_raw['CHARGE_OFF_VOLUME'] = df_raw['Charge_Off_Volume']
+df_raw_final = df_raw[['DATE', 'BRAND', 'COUNTRY', 'CHARGE_OFF_VOLUME']]
 
-df['Authorization_perc'] = np.where(
-    df['Metric'] == 'Authorization % (#)',
-    df['Value'],
-    0
-)
+# --- Part 3: DEV_CHARGE_RATE_VOL_AOC ---
+mask = df_aoc['METRIC'].str.strip().str.upper() == 'CYCLE 7 PLUS ACCOUNTS OVER 210 DPD WRITTEN-OFF'
+df_aoc = df_aoc[mask]
+df_aoc['DATE'] = pd.to_datetime(df_aoc['Date'], errors='coerce') + MonthEnd(0)
+df_aoc['BRAND'] = 'NA'
+df_aoc_grp = df_aoc.groupby(['DATE', 'COUNTRY', 'BRAND'], dropna=False)['Charge_Off_Volume'].sum().reset_index()
+df_aoc_grp['CHARGE_OFF_VOLUME'] = df_aoc_grp['Charge_Off_Volume']
+df_aoc_grp = df_aoc_grp[['DATE', 'BRAND', 'COUNTRY', 'CHARGE_OFF_VOLUME']]
 
-# Rename and compute final date column (last day of month)
-df['date'] = df['DATE'] + pd.offsets.MonthEnd(0)
+# --- Part 4: VIEW_DEV_REV_CARDS_SUMMARY ---
+mask_summary = (df_summary['COUNTRY'] == 'HASE') & (df_summary['Metric'] == '# unit of loss account')
+df_summary = df_summary[mask_summary]
+df_summary['DATE'] = pd.to_datetime(df_summary['date'], errors='coerce') + MonthEnd(0)
+df_summary['BRAND'] = 'NA'
+df_summary['CHARGE_OFF_VOLUME'] = df_summary['VALUE']
+df_summary_final = df_summary[['DATE', 'BRAND', 'COUNTRY', 'CHARGE_OFF_VOLUME']]
 
-# Rename Source_File to Metric for final result
-df['Metric_final'] = df['Source_File']
-
-# Group and aggregate
-result_df = (
-    df.groupby(['Metric_final', 'Country', 'date'], dropna=False)
-    .agg({
-        'Transaction_Count': 'sum',
-        'Authorization_perc': 'sum'
-    })
-    .reset_index()
-    .rename(columns={'Metric_final': 'Metric'})
-)
+# --- Combine All Parts (UNION ALL) ---
+final_df = pd.concat([df_asia_raw_grp, df_raw_final, df_aoc_grp, df_summary_final], ignore_index=True)
