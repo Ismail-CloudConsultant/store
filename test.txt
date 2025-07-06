@@ -1,24 +1,44 @@
 import pandas as pd
+import numpy as np
 
-# Assuming df is your input DataFrame
-df['Final_Decision'] = df['Final_Decision'].astype(str).str.strip()
-df['Merchant_Country'] = df['Merchant_Country'].astype(str).str.strip()
-df['Card_Presence'] = df['Card_Presence'].astype(str).str.strip()
-df['Country'] = df['Source_File'].astype(str).str.strip()
+# Assuming df is your loaded DataFrame
+df['Metric'] = df['Metric'].astype(str).str.strip()
+df['Source_File'] = df['Source_File'].astype(str).str.strip()
+df['Country'] = df['Country'].astype(str).str.strip()
+df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')  # Cast to datetime
 
-# Parse Auth_Month (e.g., 202407) as a date ending on 28th, then compute last day of month
-df['Auth_Month'] = df['Auth_Month'].astype(str)
-df['Date'] = pd.to_datetime(df['Auth_Month'] + '28', format='%Y%m%d', errors='coerce') + pd.offsets.MonthEnd(0)
+# Filter out rows where Value is 'nan' string and DATE starts with 'Unnamed'
+df = df[(df['Value'] != 'nan') & (~df['DATE'].astype(str).str.startswith('Unnamed'))]
+
+# Convert Value column to float safely
+df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
+
+# Create derived columns based on Metric
+df['Transaction_Count'] = np.where(
+    df['Metric'] == 'Transaction Count (#k)',
+    df['Value'] * 1000,
+    0
+)
+
+df['Authorization_perc'] = np.where(
+    df['Metric'] == 'Authorization % (#)',
+    df['Value'],
+    0
+)
+
+# Rename and compute final date column (last day of month)
+df['date'] = df['DATE'] + pd.offsets.MonthEnd(0)
+
+# Rename Source_File to Metric for final result
+df['Metric_final'] = df['Source_File']
 
 # Group and aggregate
 result_df = (
-    df.groupby([
-        'Final_Decision',
-        'Merchant_Country',
-        'Card_Presence',
-        'Country',
-        'Date'
-    ], dropna=False)
-    .agg({'Txn_Count': 'sum'})
+    df.groupby(['Metric_final', 'Country', 'date'], dropna=False)
+    .agg({
+        'Transaction_Count': 'sum',
+        'Authorization_perc': 'sum'
+    })
     .reset_index()
+    .rename(columns={'Metric_final': 'Metric'})
 )
