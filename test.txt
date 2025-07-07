@@ -1,51 +1,58 @@
 import pandas as pd
+import numpy as np
 from pandas.tseries.offsets import MonthEnd
 
-# --- Part 1: DEV_CHARGE_RATE_VOL_ASIA_RAW ---
-df_asia_raw = df_asia_raw[df_asia_raw['METRIC'].str.strip() != 'Total Accounts']
-df_asia_raw['DATE'] = pd.to_datetime(df_asia_raw['Date'], errors='coerce') + MonthEnd(0)
-df_asia_raw['BRAND'] = 'NA'
-df_asia_raw['COUNTRY'] = df_asia_raw['Source_File'].apply(lambda x: 'TWN' if x.strip() == 'TAI' else x.strip())
-df_asia_raw_grp = df_asia_raw.groupby(['DATE', 'COUNTRY', 'BRAND'], dropna=False)['Charge_Off_Volume'].sum().reset_index()
-df_asia_raw_grp['CHARGE_OFF_VOLUME'] = df_asia_raw_grp['Charge_Off_Volume']
-df_asia_raw_grp = df_asia_raw_grp[['DATE', 'BRAND', 'COUNTRY', 'CHARGE_OFF_VOLUME']]
+# Clean and standardize columns
+df['Product'] = df['Final_Product'].astype(str).str.strip()
+df['Key_Metrics'] = df['Key_Metrics'].astype(str).str.strip()
+df['COUNTRY'] = df['COUNTRY'].astype(str).str.strip()
 
-# --- Part 2: DEV_CHARGE_RATE_VOL_RAW ---
-def get_brand(sf):
-    sf = sf.strip()
-    return sf if sf in ['HSBC', 'MSB', 'FD'] else 'NA'
+# Filter relevant countries
+valid_countries = [
+    'UK','HONGKONG','HASE','MEXICO','UAE','SINGAPORE','MALAYSIA',
+    'INDIA','VIETNAM','TAIWAN','EGYPT','CANADA','US','AUSTRALIA',
+    'CHINA','INDONESIA','PHILIPPINES'
+]
+df = df[df['COUNTRY'].isin(valid_countries)]
 
-def get_country(sf):
-    sf = sf.strip()
-    if sf in ['HSBC', 'MSB', 'FD']:
-        return 'UK'
-    elif sf == 'US':
-        return 'USA'
-    else:
-        return sf
+# Map Key_Metrics to METRIC
+metric_map = {
+    'Gross Receivables': 'GROSS_RECEIVABLES',
+    '$30+ Actuals': '30_PLUS',
+    '$90+ Actuals': '90_PLUS',
+    'Gross Charge-off (GCO)': 'GROSS_CHARGE_OFF',
+    'Net Charge Off': 'NET_CHARGE_OFF'
+}
+df['METRIC'] = df['Key_Metrics'].map(metric_map)
 
-df_raw['DATE'] = pd.to_datetime(df_raw['DATE'], errors='coerce') + MonthEnd(0)
-df_raw['BRAND'] = df_raw['source_file'].apply(get_brand)
-df_raw['COUNTRY'] = df_raw['source_file'].apply(get_country)
-df_raw['CHARGE_OFF_VOLUME'] = df_raw['Charge_Off_Volume']
-df_raw_final = df_raw[['DATE', 'BRAND', 'COUNTRY', 'CHARGE_OFF_VOLUME']]
+# Convert Value to float after removing commas
+df['Value'] = df['Value'].astype(str).str.replace(',', '', regex=False)
+df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
 
-# --- Part 3: DEV_CHARGE_RATE_VOL_AOC ---
-mask = df_aoc['METRIC'].str.strip().str.upper() == 'CYCLE 7 PLUS ACCOUNTS OVER 210 DPD WRITTEN-OFF'
-df_aoc = df_aoc[mask]
-df_aoc['DATE'] = pd.to_datetime(df_aoc['Date'], errors='coerce') + MonthEnd(0)
-df_aoc['BRAND'] = 'NA'
-df_aoc_grp = df_aoc.groupby(['DATE', 'COUNTRY', 'BRAND'], dropna=False)['Charge_Off_Volume'].sum().reset_index()
-df_aoc_grp['CHARGE_OFF_VOLUME'] = df_aoc_grp['Charge_Off_Volume']
-df_aoc_grp = df_aoc_grp[['DATE', 'BRAND', 'COUNTRY', 'CHARGE_OFF_VOLUME']]
+# Convert Date to last day of month
+df['Date'] = pd.to_datetime(df['Date'], errors='coerce') + MonthEnd(0)
 
-# --- Part 4: VIEW_DEV_REV_CARDS_SUMMARY ---
-mask_summary = (df_summary['COUNTRY'] == 'HASE') & (df_summary['Metric'] == '# unit of loss account')
-df_summary = df_summary[mask_summary]
-df_summary['DATE'] = pd.to_datetime(df_summary['date'], errors='coerce') + MonthEnd(0)
-df_summary['BRAND'] = 'NA'
-df_summary['CHARGE_OFF_VOLUME'] = df_summary['VALUE']
-df_summary_final = df_summary[['DATE', 'BRAND', 'COUNTRY', 'CHARGE_OFF_VOLUME']]
+# Map COUNTRY1
+country_map = {
+    "VIETNAM": "VNM", "UK": "UK", "TAIWAN": "TWN", "SINGAPORE": "SGH",
+    "MEXICO": "MEX", "MALAYSIA": "MYH", "INDIA": "INM", "EGYPT": "EGY",
+    "CHINA": "AOC", "CANADA": "CAN", "AUSTRALIA": "AUH", "US": "USA",
+    "UAE": "UAE", "HASE": "HASE", "HONGKONG": "AMH", "INDONESIA": "IMO",
+    "PHILIPPINES": "MNL"
+}
+df['COUNTRY1'] = df['COUNTRY'].map(lambda x: country_map.get(x.strip(), x.strip()))
 
-# --- Combine All Parts (UNION ALL) ---
-final_df = pd.concat([df_asia_raw_grp, df_raw_final, df_aoc_grp, df_summary_final], ignore_index=True)
+# Keep only necessary columns
+df = df[['Product', 'Date', 'COUNTRY1', 'COUNTRY', 'METRIC', 'Value']]
+
+# Pivot the data
+pivot_df = df.pivot_table(
+    index=['Product', 'Date', 'COUNTRY1', 'COUNTRY'],
+    columns='METRIC',
+    values='Value',
+    aggfunc='sum',
+    fill_value=0
+).reset_index()
+
+# Optional: flatten column names
+pivot_df.columns.name = None  # remove pivot axis name
