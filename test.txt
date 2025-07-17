@@ -1,58 +1,41 @@
 import pandas as pd
-import numpy as np
 from pandas.tseries.offsets import MonthEnd
 
-# Clean and standardize columns
-df['Product'] = df['Final_Product'].astype(str).str.strip()
-df['Key_Metrics'] = df['Key_Metrics'].astype(str).str.strip()
-df['COUNTRY'] = df['COUNTRY'].astype(str).str.strip()
-
-# Filter relevant countries
-valid_countries = [
-    'UK','HONGKONG','HASE','MEXICO','UAE','SINGAPORE','MALAYSIA',
-    'INDIA','VIETNAM','TAIWAN','EGYPT','CANADA','US','AUSTRALIA',
-    'CHINA','INDONESIA','PHILIPPINES'
+# Step 1: Filter for required metrics
+valid_metrics = [
+    "All CASA & TD NTB Premier Customers",
+    "Card holding for all CASA & TD NTB Premier Customers",
+    "All CASA & TD NTB Non-Premier Customers",
+    "Card holding for all CASA & TD NTB Non-premier Customers"
 ]
-df = df[df['COUNTRY'].isin(valid_countries)]
+df = df[df['Metric'].isin(valid_metrics)]
 
-# Map Key_Metrics to METRIC
+# Step 2: Map Metric to simplified METRIC codes
 metric_map = {
-    'Gross Receivables': 'GROSS_RECEIVABLES',
-    '$30+ Actuals': '30_PLUS',
-    '$90+ Actuals': '90_PLUS',
-    'Gross Charge-off (GCO)': 'GROSS_CHARGE_OFF',
-    'Net Charge Off': 'NET_CHARGE_OFF'
+    "All CASA & TD NTB Premier Customers": "ALL_PREM",
+    "Card holding for all CASA & TD NTB Premier Customers": "ALL_PREM_WITH_CARD",
+    "All CASA & TD NTB Non-Premier Customers": "ALL_NPREM",
+    "Card holding for all CASA & TD NTB Non-premier Customers": "ALL_NPREM_WITH_CARD"
 }
-df['METRIC'] = df['Key_Metrics'].map(metric_map)
+df['METRIC'] = df['Metric'].map(metric_map)
 
-# Convert Value to float after removing commas
-df['Value'] = df['Value'].astype(str).str.replace(',', '', regex=False)
+# Step 3: Convert date to month-end
+df['Date'] = pd.to_datetime(df['month'], errors='coerce') + MonthEnd(0)
+
+# Step 4: Convert Value to float
 df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
 
-# Convert Date to last day of month
-df['Date'] = pd.to_datetime(df['Date'], errors='coerce') + MonthEnd(0)
+# Step 5: Add constant column
+df['Cust_Type'] = 'NTB'
 
-# Map COUNTRY1
-country_map = {
-    "VIETNAM": "VNM", "UK": "UK", "TAIWAN": "TWN", "SINGAPORE": "SGH",
-    "MEXICO": "MEX", "MALAYSIA": "MYH", "INDIA": "INM", "EGYPT": "EGY",
-    "CHINA": "AOC", "CANADA": "CAN", "AUSTRALIA": "AUH", "US": "USA",
-    "UAE": "UAE", "HASE": "HASE", "HONGKONG": "AMH", "INDONESIA": "IMO",
-    "PHILIPPINES": "MNL"
-}
-df['COUNTRY1'] = df['COUNTRY'].map(lambda x: country_map.get(x.strip(), x.strip()))
-
-# Keep only necessary columns
-df = df[['Product', 'Date', 'COUNTRY1', 'COUNTRY', 'METRIC', 'Value']]
-
-# Pivot the data
+# Step 6: Pivot the data
 pivot_df = df.pivot_table(
-    index=['Product', 'Date', 'COUNTRY1', 'COUNTRY'],
+    index=['Country', 'Date', 'MOB', 'Cust_Type'],
     columns='METRIC',
     values='Value',
     aggfunc='sum',
     fill_value=0
 ).reset_index()
 
-# Optional: flatten column names
-pivot_df.columns.name = None  # remove pivot axis name
+# Step 7: Clean up column names
+pivot_df.columns.name = None  # Remove column group name from pivot
