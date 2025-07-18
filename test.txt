@@ -1,41 +1,49 @@
 import pandas as pd
-from pandas.tseries.offsets import MonthEnd
+import numpy as np
 
-# Step 1: Filter for required metrics
+# Step 1: Filter relevant metrics
 valid_metrics = [
-    "All CASA & TD NTB Premier Customers",
-    "Card holding for all CASA & TD NTB Premier Customers",
-    "All CASA & TD NTB Non-Premier Customers",
-    "Card holding for all CASA & TD NTB Non-premier Customers"
+    "Premier Customers (excluding card only)",
+    "Non-Premier Customers (excluding card only)"
 ]
-df = df[df['Metric'].isin(valid_metrics)]
+df = df[df['Metrics'].isin(valid_metrics)]
 
-# Step 2: Map Metric to simplified METRIC codes
+# Step 2: Map to METRIC column
 metric_map = {
-    "All CASA & TD NTB Premier Customers": "ALL_PREM",
-    "Card holding for all CASA & TD NTB Premier Customers": "ALL_PREM_WITH_CARD",
-    "All CASA & TD NTB Non-Premier Customers": "ALL_NPREM",
-    "Card holding for all CASA & TD NTB Non-premier Customers": "ALL_NPREM_WITH_CARD"
+    ("WPB", "Premier Customers (excluding card only)"): "PremCustomers",
+    ("Cards", "Premier Customers (excluding card only)"): "PremCustomerCards",
+    ("WPB", "Non-Premier Customers (excluding card only)"): "NonPremCustomers",
+    ("Cards", "Non-Premier Customers (excluding card only)"): "NonPremCustomerCards"
 }
-df['METRIC'] = df['Metric'].map(metric_map)
+df['METRIC'] = df.apply(lambda row: metric_map.get((row['Product'], row['Metrics'])), axis=1)
 
-# Step 3: Convert date to month-end
-df['Date'] = pd.to_datetime(df['month'], errors='coerce') + MonthEnd(0)
-
-# Step 4: Convert Value to float
+# Step 3: Convert Value to float
 df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
 
-# Step 5: Add constant column
-df['Cust_Type'] = 'NTB'
-
-# Step 6: Pivot the data
+# Step 4: Pivot data
 pivot_df = df.pivot_table(
-    index=['Country', 'Date', 'MOB', 'Cust_Type'],
+    index=['Country', 'Date'],
     columns='METRIC',
     values='Value',
     aggfunc='sum',
     fill_value=0
 ).reset_index()
 
-# Step 7: Clean up column names
-pivot_df.columns.name = None  # Remove column group name from pivot
+# Step 5: Calculate penetration metrics
+pivot_df['Prem_Pen'] = np.where(
+    pivot_df['PremCustomers'] != 0,
+    pivot_df['PremCustomerCards'] / pivot_df['PremCustomers'],
+    0
+)
+
+pivot_df['NonPrem_Pen'] = np.where(
+    pivot_df['NonPremCustomers'] != 0,
+    pivot_df['NonPremCustomerCards'] / pivot_df['NonPremCustomers'],
+    0
+)
+
+# Step 6: Add Cust_Type column
+pivot_df['Cust_Type'] = 'ETB'
+
+# Optional: Clean column names
+pivot_df.columns.name = None
