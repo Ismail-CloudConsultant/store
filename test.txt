@@ -1,76 +1,54 @@
-import kivy
-from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
-from kivy.uix.label import Label
-from kivy.uix.filechooser import FileChooserIconView
-from kivy.uix.scrollview import ScrollView
-from kivy.uix.textinput import TextInput
-import pandas as pd
+import streamlit as st
 
-class FileUploader(BoxLayout):
-    def __init__(self, **kwargs):
-        super().__init__(orientation='vertical', **kwargs)
+# Page config
+st.set_page_config(layout="wide")
 
-        self.df1 = None
-        self.df2 = None
+# CSS for button styling to look like your diagram
+st.markdown("""
+    <style>
+        .menu-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 10px;
+            border-right: 2px solid black;
+            height: 100vh;
+        }
+        .menu-button {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            border: 2px solid black;
+            background-color: white;
+            text-align: center;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .menu-button:hover {
+            background-color: #f0f0f0;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-        self.label = Label(text="Upload two CSV files", size_hint=(1, 0.1))
-        self.add_widget(self.label)
+# Create two columns: left menu and right content
+col1, col2 = st.columns([1, 4])
 
-        self.upload_button1 = Button(text="Upload File 1")
-        self.upload_button1.bind(on_press=self.open_file_chooser1)
-        self.add_widget(self.upload_button1)
+with col1:
+    st.markdown('<div class="menu-container">', unsafe_allow_html=True)
 
-        self.upload_button2 = Button(text="Upload File 2")
-        self.upload_button2.bind(on_press=self.open_file_chooser2)
-        self.add_widget(self.upload_button2)
+    if st.button("Create", key="create"):
+        st.session_state.page = "Create"
 
-        self.output1 = TextInput(readonly=True, size_hint=(1, 0.4), font_size=14)
-        self.output2 = TextInput(readonly=True, size_hint=(1, 0.4), font_size=14)
+    if st.button("Update", key="update"):
+        st.session_state.page = "Update"
 
-        self.add_widget(self.output1)
-        self.add_widget(self.output2)
+    if st.button("Validate", key="validate"):
+        st.session_state.page = "Validate"
 
-    def open_file_chooser1(self, instance):
-        self.file_chooser_popup(1)
+    if st.button("Visualization", key="visualization"):
+        st.session_state.page = "Visualization"
 
-    def open_file_chooser2(self, instance):
-        self.file_chooser_popup(2)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    def file_chooser_popup(self, file_number):
-        chooser = FileChooserIconView(filters=['*.csv'])
-        chooser.bind(on_submit=lambda instance, selection, touch: self.load_file(selection, file_number))
-
-        popup = BoxLayout(orientation='vertical')
-        popup.add_widget(chooser)
-        close_button = Button(text='Close', size_hint=(1, 0.1))
-        close_button.bind(on_press=lambda x: self.remove_widget(popup))
-        popup.add_widget(close_button)
-
-        self.add_widget(popup)
-
-    def load_file(self, selection, file_number):
-        if selection:
-            try:
-                df = pd.read_csv(selection[0])
-                display_text = df.head().to_string(index=False)  # limit to first few rows for readability
-
-                if file_number == 1:
-                    self.df1 = df
-                    self.output1.text = f"File 1:\n{display_text}"
-                elif file_number == 2:
-                    self.df2 = df
-                    self.output2.text = f"File 2:\n{display_text}"
-            except Exception as e:
-                if file_number == 1:
-                    self.output1.text = f"Error: {e}"
-                else:
-                    self.output2.text = f"Error: {e}"
-
-class CSVUploaderApp(App):
-    def build(self):
-        return FileUploader()
-
-if __name__ == "__main__":
-    CSVUploaderApp().run()
+with col2:
+    st.write("")  # Blank space like in your image
