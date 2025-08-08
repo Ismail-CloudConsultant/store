@@ -3,6 +3,10 @@ import streamlit as st
 # Page config
 st.set_page_config(layout="wide")
 
+# Initialize session state for the sheet
+if "current_sheet" not in st.session_state:
+    st.session_state.current_sheet = "Create"
+
 # CSS for button styling to look like your diagram
 st.markdown("""
     <style>
@@ -36,19 +40,36 @@ col1, col2 = st.columns([1, 4])
 with col1:
     st.markdown('<div class="menu-container">', unsafe_allow_html=True)
 
-    if st.button("Create", key="create"):
-        st.session_state.page = "Create"
-
-    if st.button("Update", key="update"):
-        st.session_state.page = "Update"
-
-    if st.button("Validate", key="validate"):
-        st.session_state.page = "Validate"
-
-    if st.button("Visualization", key="visualization"):
-        st.session_state.page = "Visualization"
+    # Button to navigate between sheets
+    if st.button("Create"):
+        st.session_state.current_sheet = "Create"
+    if st.button("Update"):
+        st.session_state.current_sheet = "Update"
+    if st.button("Validate"):
+        st.session_state.current_sheet = "Validate"
+    if st.button("Visualization"):
+        st.session_state.current_sheet = "Visualization"
 
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
-    st.write("")  # Blank space like in your image
+    # Display content based on the selected sheet
+    if st.session_state.current_sheet == "Create":
+        st.subheader("Create Sheet")
+        st.write("This is the Create sheet where you can create new data.")
+        # Add your content for Create Sheet here
+
+    elif st.session_state.current_sheet == "Update":
+        st.subheader("Update Sheet")
+        st.write("This is the Update sheet where you can update existing data.")
+        # Add your content for Update Sheet here
+
+    elif st.session_state.current_sheet == "Validate":
+        st.subheader("Validate Sheet")
+        st.write("This is the Validate sheet where you can validate data.")
+        # Add your content for Validate Sheet here
+
+    elif st.session_state.current_sheet == "Visualization":
+        st.subheader("Visualization Sheet")
+        st.write("This is the Visualization sheet where you can visualize data.")
+        # Add your content for Visualization Sheet here
