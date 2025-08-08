@@ -5,12 +5,11 @@ import datetime as dt
 from datetime import datetime
 import io
 
-st.set_page_config(page_title="Four Sheets App - FX PCD", layout="wide")
+st.set_page_config(page_title="FX PCD - Core Margin Management", layout="wide")
 
 # --- CSS to increase sidebar radio font size ---
 st.markdown("""
     <style>
-    /* Increase sidebar radio font size */
     div[role="radiogroup"] label {
         font-size: 17px !important;
         font-weight: 550 !important;
@@ -19,7 +18,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 #
-# === Business logic classes (integrated & corrected) ===
+# === Business logic classes (integrated) ===
 #
 
 class FileProcesser:
@@ -57,22 +56,18 @@ class FileProcesser:
         }
         datatypes = pd.DataFrame(read)
 
-        # Create actual dtypes frame (ensure columns exist)
         actual_types = pd.DataFrame(self.df_output.dtypes, columns=['AD']).reset_index().rename(columns={'index': 'index'})
         check = pd.merge(datatypes, actual_types, on='index', how='left')
         check['CHECK'] = check['DD'] == check['AD'].astype(str)
 
         chnages = check[check['CHECK'] == False]
 
-        # helper to convert various date string formats to mm/dd/yyyy 00:00:00
         def convert_to_mmddyyyy(date_str):
             try:
                 if pd.isna(date_str):
                     return None
                 s = str(date_str).strip()
-                # Replace multiple spaces
                 s = " ".join(s.split())
-                # Try common formats
                 if '-' in s and ':' in s:
                     dt_obj = datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
                 elif '/' in s and ':' in s:
@@ -80,56 +75,42 @@ class FileProcesser:
                 elif '-' in s and ':' not in s:
                     dt_obj = datetime.strptime(s, "%Y-%m-%d")
                 elif '/' in s and ':' not in s:
-                    # handle mm/dd/yyyy
                     dt_obj = datetime.strptime(s, "%m/%d/%Y")
                 else:
-                    # fallback try parsing
                     dt_obj = pd.to_datetime(s)
                 return dt_obj.strftime("%m/%d/%Y 00:00:00")
             except Exception:
                 return None
 
-        # Apply conversions for changed columns
         for _, row in chnages.iterrows():
             col = row['index']
             desired = row['DD']
-            Actual = row['AD'] if 'AD' in row else None
-            # Only process existing columns
             if col not in self.df_output.columns:
                 continue
 
             if col in ['Start Date Time MM/DD/YYYY HH24:MI:SS', 'End Date Time MM/DD/YYYY HH24:MI:SS']:
-                # Replace '2999' to '2099' in strings (as per original)
                 self.df_output[col] = self.df_output[col].astype(str).str.replace('2999', '2099', regex=False)
-                # Convert formats
                 self.df_output[col] = self.df_output[col].apply(convert_to_mmddyyyy)
             else:
-                # attempt astype if possible
                 try:
-                    if desired in ['int64', 'float64', 'object']:
-                        if desired == 'object':
-                            self.df_output[col] = self.df_output[col].astype(str)
-                        else:
-                            self.df_output[col] = self.df_output[col].astype(desired)
+                    if desired == 'object':
+                        self.df_output[col] = self.df_output[col].astype(str)
+                    else:
+                        self.df_output[col] = self.df_output[col].astype(desired)
                 except Exception:
-                    # best effort: use to_numeric for numeric
                     if desired in ['int64', 'float64']:
                         self.df_output[col] = pd.to_numeric(self.df_output[col], errors='coerce')
 
         self.proccesedfile = self.df_output.copy()
 
-        # Filter keep only records with End Date Time year = 2099
         if 'End Date Time MM/DD/YYYY HH24:MI:SS' in self.df_output.columns:
-            # Ensure string type then slice characters to extract year
             self.df_output = self.df_output[self.df_output['End Date Time MM/DD/YYYY HH24:MI:SS'].astype(str).str[6:10] == '2099']
 
-        # Preprocess input df_input similarly
         for col in ['Customer Segment Type', 'Tier Max Txn Amount', 'Tier Min Txn Amount']:
             if col in self.df_input.columns:
                 self.df_input[col] = pd.to_numeric(self.df_input[col], errors='coerce')
         self.df_input.dropna(subset=[c for c in ['Customer Segment Type', 'Tier Max Txn Amount', 'Tier Min Txn Amount'] if c in self.df_input.columns], inplace=True)
 
-        # Drop some columns from input
         dropcols_input = ['Start Date Time MM/DD/YYYY HH24:MI:SS', 'End Date Time MM/DD/YYYY HH24:MI:SS', 'Core Margin Type', 'S No']
         self.df_input.drop(columns=[c for c in self.df_input.columns if c in dropcols_input], inplace=True, errors='ignore')
 
@@ -148,7 +129,6 @@ class CreateOperation:
                 'Customer Segment Type', 'Tier Min Txn Amount', 'Tier Max Txn Amount']
         merged = pd.merge(self.df_output, self.df_input, on=col1, how='inner')
 
-        # set core margin value from input
         merged['Core Margin Value_x'] = merged['Core Margin Value_y'] * 1.0
         merged = merged.rename(columns={'Core Margin Value_x': 'Core Margin Value', 'Narrative_y': 'Narrative'}).drop(columns=[c for c in ['Core Margin Value_y', 'Narrative_x'] if c in merged.columns], errors='ignore')
 
@@ -160,25 +140,20 @@ class CreateOperation:
 
         mask = self.proccesedfile.set_index(on).index.isin(matches.set_index(on).index) if not matches.empty else pd.Series([False] * len(self.proccesedfile), index=self.proccesedfile.index)
 
-        # format select date to required string
         if isinstance(self.date, (dt.date, dt.datetime)):
             date_str = self.date.strftime("%m/%d/%Y 00:00:00")
         else:
-            # if user passes a string, try parse
             try:
                 date_obj = pd.to_datetime(self.date)
                 date_str = date_obj.strftime("%m/%d/%Y 00:00:00")
             except Exception:
                 date_str = dt.datetime.today().strftime("%m/%d/%Y 00:00:00")
 
-        # end old records in processed file
         if len(self.proccesedfile) > 0:
             self.proccesedfile.loc[mask, 'End Date Time MM/DD/YYYY HH24:MI:SS'] = date_str
 
-        # set start date for merged new rows
         merged['Start Date Time MM/DD/YYYY HH24:MI:SS'] = date_str
 
-        # concat and return
         return pd.concat([self.proccesedfile, merged], ignore_index=True)
 
 
@@ -189,7 +164,6 @@ class UpdateOperation:
         self.proccesedfile = proccesedfile.copy()
 
     def execute(self):
-        # drop narrative from input if present (as per original)
         if 'Narrative' in self.df_input.columns:
             self.df_input = self.df_input.drop(columns=['Narrative'], errors='ignore')
 
@@ -197,7 +171,6 @@ class UpdateOperation:
                 'Customer Segment Type', 'Tier Min Txn Amount', 'Tier Max Txn Amount']
         merged1 = pd.merge(self.df_output, self.df_input, on=col1, how='inner')
 
-        # update core margin value and drop old
         merged1['Core Margin Value_x'] = merged1['Core Margin Value_y'] * 1.0
         merged1 = merged1.rename(columns={'Core Margin Value_x': 'Core Margin Value'}).drop(columns=['Core Margin Value_y'], errors='ignore')
         merged1 = merged1.loc[:, merged1.isnull().mean() <= 0.9]
@@ -207,10 +180,8 @@ class UpdateOperation:
                    'Start Date Time MM/DD/YYYY HH24:MI:SS', 'End Date Time MM/DD/YYYY HH24:MI:SS',
                    'Narrative', 'Core Margin Type']
 
-        # keep unique (left_only) rows from processed file that are not in merged1
         unique = self.proccesedfile.merge(merged1, on=com_col, how='left', indicator=True).query('_merge=="left_only"').drop(columns=['_merge'], errors='ignore')
 
-        # clean up column suffixes
         unique.columns = unique.columns.str.replace('_y', '', regex=False)
         unique.columns = unique.columns.str.replace('_x', '', regex=False)
         unique = unique.loc[:, unique.isnull().mean() <= 0.9]
@@ -240,8 +211,7 @@ class Datefinder:
 # === Streamlit UI pages ===
 #
 
-# Sidebar: sheet selector
-sheet = st.sidebar.radio("Select sheet:", ["Create", "Update", "Validate", "Visualize"], index=0)
+sheet = st.sidebar.radio("Select sheet:", ["Create", "Update", "Validate", "Visualize"], index=1)
 
 st.title("FX PCD - Core Margin Management")
 
@@ -267,7 +237,6 @@ if sheet == "Create":
 
             final['Send Currency'] = final.CCY.str[0:3]
             final['Receive Currency'] = final.CCY.str[4:]
-            # drop intermediate cols safely
             final = final.drop(columns=[c for c in ['Products_x', 'Channel_x', 'CCY Segment', 'Segment_x', 'Tiers', 'MV1', 'MV3', 'MV2', 'CCY'] if c in final.columns], errors='ignore')
             final = final.rename(columns={
                 'Core Margin': 'Core Margin Value',
@@ -339,119 +308,217 @@ if sheet == "Create":
 # -----------------------------
 elif sheet == "Update":
     st.header("💱 Update CCY margins")
-    st.markdown("Adjusts Margins for Existing CCY pairs based on user inputs.")
+    st.markdown("Adjust Margins for Existing CCY pairs based on user inputs. Choose update mode below.")
 
-    # maintain processed lock per session
-    if 'processed' not in st.session_state:
-        st.session_state['processed'] = False
+    # top-level update mode selector (three modes)
+    update_mode = st.radio("Select update mode:", ["Update through file", "Update through percentage", "Update through bips"], index=0, horizontal=True)
 
-    if not st.session_state['processed']:
-        Outputfile = st.file_uploader("Upload Main file (Excel) - Core_Margin_Configuration sheet", type=["xlsx"], key="update_output")
-        Inputfile = st.file_uploader("Upload New changes file (Excel)", type=["xlsx"], key="update_input")
-        operation = st.selectbox("Selection Operation", ["Create New Records", "Update Existing Records"], disabled=st.session_state['processed'], key="update_operation")
-
-        if Outputfile and Inputfile:
-            try:
-                df_output = pd.read_excel(Outputfile, sheet_name='Core_Margin_Configuration')
-            except Exception:
-                # fallback: try first sheet
-                df_output = pd.read_excel(Outputfile)
-            try:
-                df_input = pd.read_excel(Inputfile)
-            except Exception:
-                df_input = pd.read_excel(Inputfile)
-
-            processor = FileProcesser(df_output, df_input)
-            try:
-                df_output_proc, df_input_proc, proccesedfile = processor.preprocess()
-            except Exception as e:
-                st.error(f"Preprocessing failed: {e}")
-                df_output_proc, df_input_proc, proccesedfile = None, None, None
-
-            date_min = None
-            if operation == "Create New Records" and df_output_proc is not None and df_input_proc is not None:
-                try:
-                    date_class = Datefinder(df_output_proc, df_input_proc)
-                    date_min = date_class.calc()
-                    select_date = st.date_input("Select date of updating", value=date_min, min_value=date_min, key="update_select_date")
-                    st.write("### Start date for new records :   ", select_date.strftime('%b %d ,%Y'))
-                except Exception as e:
-                    st.error(f"No common records or incorrect dates - Reupload correct files: {e}")
-                    select_date = None
-            else:
-                select_date = None
-
-            if st.button(" ☑ click to Run ", key="update_run"):
-                if df_output_proc is None or df_input_proc is None or proccesedfile is None:
-                    st.error("Processing cannot run because preprocessing failed.")
-                else:
-                    op = CreateOperation(df_output_proc, df_input_proc, proccesedfile, select_date) if operation == "Create New Records" else UpdateOperation(df_output_proc, df_input_proc, proccesedfile)
-                    try:
-                        final_df = op.execute()
-                        st.session_state['final_df'] = final_df
-                        st.session_state['processed'] = True
-                        st.success("✅ Processing finished - you can now preview and download below.")
-                    except Exception as e:
-                        st.error(f"Operation execution failed: {e}")
-
-    # After processing (locked)
-    if st.session_state.get('processed', False):
-        st.success("✅ Processing Complete. Operation is now locked.")
-        final_df = st.session_state.get('final_df', pd.DataFrame())
-        st.write("### 🔍 Filter Final Data")
-        # Show filters based on column types
-        filter_cols = st.multiselect("Select columns to filter", final_df.columns.tolist(), key="update_filter_cols")
-        filtered_df = final_df.copy()
-        for col in filter_cols:
-            if pd.api.types.is_numeric_dtype(final_df[col]):
-                min_val = float(final_df[col].min())
-                max_val = float(final_df[col].max())
-                selected_range = st.slider(f"Filter by {col}", min_val, max_val, (min_val, max_val), key=f"update_slider_{col}")
-                filtered_df = filtered_df[(filtered_df[col] >= selected_range[0]) & (filtered_df[col] <= selected_range[1])]
-            elif pd.api.types.is_datetime64_any_dtype(final_df[col]):
-                start_date = final_df[col].min()
-                end_date = final_df[col].max()
-                date_range = st.date_input(f"Filter by {col}", (start_date, end_date), key=f"update_date_{col}")
-                if len(date_range) == 2:
-                    filtered_df = filtered_df[(final_df[col] >= pd.to_datetime(date_range[0])) & (final_df[col] <= pd.to_datetime(date_range[1]))]
-            else:
-                options = final_df[col].dropna().unique().tolist()
-                selected_options = st.multiselect(f"Filter by {col}", options, default=[], key=f"update_multiselect_{col}")
-                if selected_options:
-                    filtered_df = filtered_df[filtered_df[col].isin(selected_options)]
-
-        st.write("### 📄 Filtered Data Preview")
-        st.dataframe(filtered_df, use_container_width=True)
-
-        # Prepare download buffers
+    # common helpers
+    def download_df(df, file_prefix="Updated_data"):
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            filtered_df.to_excel(writer, index=False, sheet_name='Core_Margin_Configuration')
+            df.to_excel(writer, index=False, sheet_name='Core_Margin_Configuration')
             writer.save()
         buffer.seek(0)
-
-        full_buffer = io.BytesIO()
-        with pd.ExcelWriter(full_buffer, engine='xlsxwriter') as writer:
-            final_df.to_excel(writer, index=False, sheet_name='Core_Margin_Configuration')
-            writer.save()
-        full_buffer.seek(0)
-
-        col1, col2 = st.columns(2)
         DATE_PART = dt.datetime.today().strftime("%d_%b_%H_%M_%p")
-        with col1:
-            st.download_button(
-                label="📥 Download Filtered Excel",
-                data=buffer,
-                file_name="FilteredOutput_" + DATE_PART + ".xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        with col2:
-            st.download_button(
-                label="📥 Download Full Excel",
-                data=full_buffer,
-                file_name="Updated_data_" + DATE_PART + ".xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        return buffer, f"{file_prefix}_{DATE_PART}.xlsx"
+
+    # Mode 1: Update through file (existing behavior)
+    if update_mode == "Update through file":
+        if 'processed_file_mode' not in st.session_state:
+            st.session_state['processed_file_mode'] = False
+
+        if not st.session_state['processed_file_mode']:
+            Outputfile = st.file_uploader("Upload Main file (Excel) - Core_Margin_Configuration sheet", type=["xlsx"], key="update_output_filemode")
+            Inputfile = st.file_uploader("Upload New changes file (Excel)", type=["xlsx"], key="update_input_filemode")
+            operation = st.selectbox("Selection Operation", ["Create New Records", "Update Existing Records"], disabled=st.session_state['processed_file_mode'], key="update_operation_filemode")
+
+            if Outputfile and Inputfile:
+                try:
+                    df_output = pd.read_excel(Outputfile, sheet_name='Core_Margin_Configuration')
+                except Exception:
+                    df_output = pd.read_excel(Outputfile)
+                try:
+                    df_input = pd.read_excel(Inputfile)
+                except Exception:
+                    df_input = pd.read_excel(Inputfile)
+
+                processor = FileProcesser(df_output, df_input)
+                try:
+                    df_output_proc, df_input_proc, proccesedfile = processor.preprocess()
+                except Exception as e:
+                    st.error(f"Preprocessing failed: {e}")
+                    df_output_proc, df_input_proc, proccesedfile = None, None, None
+
+                date_min = None
+                if operation == "Create New Records" and df_output_proc is not None and df_input_proc is not None:
+                    try:
+                        date_class = Datefinder(df_output_proc, df_input_proc)
+                        date_min = date_class.calc()
+                        select_date = st.date_input("Select date of updating", value=date_min, min_value=date_min, key="update_select_date_filemode")
+                        st.write("### Start date for new records :   ", select_date.strftime('%b %d ,%Y'))
+                    except Exception as e:
+                        st.error(f"No common records or incorrect dates - Reupload correct files: {e}")
+                        select_date = None
+                else:
+                    select_date = None
+
+                if st.button(" ☑ click to Run ", key="update_run_filemode"):
+                    if df_output_proc is None or df_input_proc is None or proccesedfile is None:
+                        st.error("Processing cannot run because preprocessing failed.")
+                    else:
+                        op = CreateOperation(df_output_proc, df_input_proc, proccesedfile, select_date) if operation == "Create New Records" else UpdateOperation(df_output_proc, df_input_proc, proccesedfile)
+                        try:
+                            final_df = op.execute()
+                            st.session_state['final_df_filemode'] = final_df
+                            st.session_state['processed_file_mode'] = True
+                            st.success("✅ Processing finished - you can now preview and download below.")
+                        except Exception as e:
+                            st.error(f"Operation execution failed: {e}")
+
+        # After processing (locked)
+        if st.session_state.get('processed_file_mode', False):
+            st.success("✅ Processing Complete. Operation is now locked.")
+            final_df = st.session_state.get('final_df_filemode', pd.DataFrame())
+            st.write("### 🔍 Filter Final Data")
+            filter_cols = st.multiselect("Select columns to filter", final_df.columns.tolist(), key="filemode_filter_cols")
+            filtered_df = final_df.copy()
+            for col in filter_cols:
+                if pd.api.types.is_numeric_dtype(final_df[col]):
+                    min_val = float(final_df[col].min())
+                    max_val = float(final_df[col].max())
+                    selected_range = st.slider(f"Filter by {col}", min_val, max_val, (min_val, max_val), key=f"filemode_slider_{col}")
+                    filtered_df = filtered_df[(filtered_df[col] >= selected_range[0]) & (filtered_df[col] <= selected_range[1])]
+                elif pd.api.types.is_datetime64_any_dtype(final_df[col]):
+                    start_date = final_df[col].min()
+                    end_date = final_df[col].max()
+                    date_range = st.date_input(f"Filter by {col}", (start_date, end_date), key=f"filemode_date_{col}")
+                    if len(date_range) == 2:
+                        filtered_df = filtered_df[(final_df[col] >= pd.to_datetime(date_range[0])) & (final_df[col] <= pd.to_datetime(date_range[1]))]
+                else:
+                    options = final_df[col].dropna().unique().tolist()
+                    selected_options = st.multiselect(f"Filter by {col}", options, default=[], key=f"filemode_multiselect_{col}")
+                    if selected_options:
+                        filtered_df = filtered_df[filtered_df[col].isin(selected_options)]
+
+            st.write("### 📄 Filtered Data Preview")
+            st.dataframe(filtered_df, use_container_width=True)
+
+            buf, fname = download_df(filtered_df, "FilteredOutput")
+            buf_full, fname_full = download_df(final_df, "Updated_data")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(label="📥 Download Filtered Excel", data=buf, file_name=fname, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            with col2:
+                st.download_button(label="📥 Download Full Excel", data=buf_full, file_name=fname_full, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    # Mode 2: Update through percentage
+    elif update_mode == "Update through percentage":
+        st.markdown("**Update through percentage** — upload Main file and apply percentage change to selected rows.")
+        Mainfile = st.file_uploader("Upload Main file (Excel) - Core_Margin_Configuration sheet", type=["xlsx"], key="perc_mainfile")
+        if Mainfile is not None:
+            try:
+                df_main = pd.read_excel(Mainfile, sheet_name='Core_Margin_Configuration')
+            except Exception:
+                df_main = pd.read_excel(Mainfile)
+
+            # Normalize numeric column
+            if 'Core Margin Value' in df_main.columns:
+                df_main['Core Margin Value'] = pd.to_numeric(df_main['Core Margin Value'], errors='coerce')
+
+            # Filter selectors (allow multiple; if none selected -> all)
+            products = df_main['Product'].dropna().unique().tolist() if 'Product' in df_main.columns else []
+            channels = df_main['Channel'].dropna().unique().tolist() if 'Channel' in df_main.columns else []
+            send_ccy = df_main['Send Currency'].dropna().unique().tolist() if 'Send Currency' in df_main.columns else []
+            recv_ccy = df_main['Receive Currency'].dropna().unique().tolist() if 'Receive Currency' in df_main.columns else []
+            custseg = df_main['Customer Segment Type'].dropna().unique().tolist() if 'Customer Segment Type' in df_main.columns else []
+
+            sel_products = st.multiselect("Select Product(s) (leave empty for all)", products, key="perc_prod")
+            sel_channels = st.multiselect("Select Channel(s) (leave empty for all)", channels, key="perc_ch")
+            sel_send = st.multiselect("Select Send Currency (leave empty for all)", send_ccy, key="perc_send")
+            sel_recv = st.multiselect("Select Receive Currency (leave empty for all)", recv_ccy, key="perc_recv")
+            sel_cust = st.multiselect("Select Customer Segment Type (leave empty for all)", custseg, key="perc_cust")
+
+            pct = st.number_input("Percentage to apply (positive to increase, negative to decrease). Example: 5 or -3", value=0.0, step=0.01, key="perc_value")
+            if st.button("Apply percentage change", key="apply_pct"):
+                df_updated = df_main.copy()
+                mask = pd.Series(True, index=df_updated.index)
+                if sel_products:
+                    mask &= df_updated['Product'].isin(sel_products)
+                if sel_channels:
+                    mask &= df_updated['Channel'].isin(sel_channels)
+                if sel_send:
+                    mask &= df_updated['Send Currency'].isin(sel_send)
+                if sel_recv:
+                    mask &= df_updated['Receive Currency'].isin(sel_recv)
+                if sel_cust:
+                    # Note: customer seg types may be numeric; coerce for comparison
+                    mask &= df_updated['Customer Segment Type'].astype(str).isin([str(x) for x in sel_cust])
+
+                # Apply percent change only to rows where Core Margin Value not null
+                apply_idx = df_updated[mask & df_updated['Core Margin Value'].notna()].index
+                # If margin stored as percentage number like 0.95, applying pct means multiplicative change
+                df_updated.loc[apply_idx, 'Core Margin Value'] = (df_updated.loc[apply_idx, 'Core Margin Value'] * (1 + pct/100)).round(4)
+
+                st.success(f"Applied {pct}% change to {len(apply_idx)} rows.")
+                st.write("### Preview (first 50 rows)")
+                st.dataframe(df_updated.head(50), use_container_width=True)
+
+                buf, fname = download_df(df_updated, "Perc_Updated")
+                st.download_button(label="📥 Download Updated Excel", data=buf, file_name=fname, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    # Mode 3: Update through bips
+    elif update_mode == "Update through bips":
+        st.markdown("**Update through bips** — upload Main file and add/subtract basis points to selected rows. 1 bp = 0.01% (i.e., 25 bps = 0.25).")
+        Mainfile = st.file_uploader("Upload Main file (Excel) - Core_Margin_Configuration sheet", type=["xlsx"], key="bips_mainfile")
+        if Mainfile is not None:
+            try:
+                df_main = pd.read_excel(Mainfile, sheet_name='Core_Margin_Configuration')
+            except Exception:
+                df_main = pd.read_excel(Mainfile)
+
+            if 'Core Margin Value' in df_main.columns:
+                df_main['Core Margin Value'] = pd.to_numeric(df_main['Core Margin Value'], errors='coerce')
+
+            products = df_main['Product'].dropna().unique().tolist() if 'Product' in df_main.columns else []
+            channels = df_main['Channel'].dropna().unique().tolist() if 'Channel' in df_main.columns else []
+            send_ccy = df_main['Send Currency'].dropna().unique().tolist() if 'Send Currency' in df_main.columns else []
+            recv_ccy = df_main['Receive Currency'].dropna().unique().tolist() if 'Receive Currency' in df_main.columns else []
+            custseg = df_main['Customer Segment Type'].dropna().unique().tolist() if 'Customer Segment Type' in df_main.columns else []
+
+            sel_products = st.multiselect("Select Product(s) (leave empty for all)", products, key="bips_prod")
+            sel_channels = st.multiselect("Select Channel(s) (leave empty for all)", channels, key="bips_ch")
+            sel_send = st.multiselect("Select Send Currency (leave empty for all)", send_ccy, key="bips_send")
+            sel_recv = st.multiselect("Select Receive Currency (leave empty for all)", recv_ccy, key="bips_recv")
+            sel_cust = st.multiselect("Select Customer Segment Type (leave empty for all)", custseg, key="bips_cust")
+
+            bps = st.number_input("Bips to apply (positive to increase, negative to decrease). Example: 25 or -10", value=0.0, step=1.0, key="bps_value")
+            if st.button("Apply bips change", key="apply_bips"):
+                df_updated = df_main.copy()
+                mask = pd.Series(True, index=df_updated.index)
+                if sel_products:
+                    mask &= df_updated['Product'].isin(sel_products)
+                if sel_channels:
+                    mask &= df_updated['Channel'].isin(sel_channels)
+                if sel_send:
+                    mask &= df_updated['Send Currency'].isin(sel_send)
+                if sel_recv:
+                    mask &= df_updated['Receive Currency'].isin(sel_recv)
+                if sel_cust:
+                    mask &= df_updated['Customer Segment Type'].astype(str).isin([str(x) for x in sel_cust])
+
+                apply_idx = df_updated[mask & df_updated['Core Margin Value'].notna()].index
+                # Convert bps to percent (e.g., 25 -> 0.25)
+                delta_percent = bps / 100.0
+                # Additive change
+                df_updated.loc[apply_idx, 'Core Margin Value'] = (df_updated.loc[apply_idx, 'Core Margin Value'] + delta_percent).round(4)
+
+                st.success(f"Applied {bps} bps ({delta_percent}%) change to {len(apply_idx)} rows.")
+                st.write("### Preview (first 50 rows)")
+                st.dataframe(df_updated.head(50), use_container_width=True)
+
+                buf, fname = download_df(df_updated, "Bips_Updated")
+                st.download_button(label="📥 Download Updated Excel", data=buf, file_name=fname, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 # -----------------------------
@@ -470,6 +537,3 @@ elif sheet == "Visualize":
     st.header("📊 Visualize")
     st.markdown("**Placeholder** — visualization logic will be integrated here. Send me the plots/metrics you want to see.")
     st.info("No visualization implemented yet.")
-
-
-# End of script
