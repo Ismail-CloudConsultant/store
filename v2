@@ -1,52 +1,475 @@
+# app.py
 import streamlit as st
+import pandas as pd
+import datetime as dt
+from datetime import datetime
+import io
 
-st.set_page_config(page_title="Four Sheets App", layout="wide")
+st.set_page_config(page_title="Four Sheets App - FX PCD", layout="wide")
 
-# --- Custom CSS to make radio text larger ---
+# --- CSS to increase sidebar radio font size ---
 st.markdown("""
     <style>
-    /* Target sidebar radio labels */
+    /* Increase sidebar radio font size */
     div[role="radiogroup"] label {
-        font-size: 18px !important;   /* Increase font size */
-        font-weight: 500;             /* Make slightly bold */
+        font-size: 17px !important;
+        font-weight: 550 !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Sidebar navigation
-st.sidebar.title("Navigation")
-sheet = st.sidebar.radio(
-    "Select a sheet:",
-    ["Create", "Update", "Validate", "Visualize"],
-    index=0
-)
+#
+# === Business logic classes (integrated & corrected) ===
+#
 
-st.title("Four Sheets App")
+class FileProcesser:
+    def __init__(self, df_output: pd.DataFrame, df_input: pd.DataFrame):
+        self.df_output = df_output.copy()
+        self.df_input = df_input.copy()
+        self.proccesedfile = None
 
-# Display content based on selected sheet
+    def preprocess(self):
+        # Drop unnecessary columns in output
+        dropcols = ['Maintenance Group', 'Is Default Margin', 'S No']
+        self.df_output.drop(columns=[c for c in self.df_output.columns if c in dropcols], inplace=True, errors='ignore')
+
+        impcols = ['Entity', 'Product', 'Channel', 'Send Currency',
+                   'Receive Currency', 'Customer Segment Type', 'Tier Min Txn Amount',
+                   'Tier Max Txn Amount', 'Start Date Time MM/DD/YYYY HH24:MI:SS',
+                   'End Date Time MM/DD/YYYY HH24:MI:SS', 'Core Margin Value']
+
+        # Drop rows missing important columns
+        self.df_output.dropna(subset=[c for c in impcols if c in self.df_output.columns], inplace=True)
+
+        # Convert numeric columns
+        for col in ['Customer Segment Type', 'Tier Max Txn Amount', 'Tier Min Txn Amount']:
+            if col in self.df_output.columns:
+                self.df_output[col] = pd.to_numeric(self.df_output[col], errors='coerce')
+
+        self.df_output.dropna(subset=[c for c in ['Customer Segment Type', 'Tier Max Txn Amount', 'Tier Min Txn Amount'] if c in self.df_output.columns], inplace=True)
+
+        # Desired datatypes checklist (as per original)
+        read = {
+            'index': ["Entity", "Product", "Channel", "Send Currency", "Receive Currency", "Customer Segment Type",
+                      "Tier Min Txn Amount", "Tier Max Txn Amount", "Start Date Time MM/DD/YYYY HH24:MI:SS",
+                      "End Date Time MM/DD/YYYY HH24:MI:SS", "Narrative", "Core Margin Value", "Core Margin Type"],
+            'DD': ["object", "object", "object", "object", "object", "int64", "float64", "float64", "float64", "float64", "object", "float64", "object"]
+        }
+        datatypes = pd.DataFrame(read)
+
+        # Create actual dtypes frame (ensure columns exist)
+        actual_types = pd.DataFrame(self.df_output.dtypes, columns=['AD']).reset_index().rename(columns={'index': 'index'})
+        check = pd.merge(datatypes, actual_types, on='index', how='left')
+        check['CHECK'] = check['DD'] == check['AD'].astype(str)
+
+        chnages = check[check['CHECK'] == False]
+
+        # helper to convert various date string formats to mm/dd/yyyy 00:00:00
+        def convert_to_mmddyyyy(date_str):
+            try:
+                if pd.isna(date_str):
+                    return None
+                s = str(date_str).strip()
+                # Replace multiple spaces
+                s = " ".join(s.split())
+                # Try common formats
+                if '-' in s and ':' in s:
+                    dt_obj = datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+                elif '/' in s and ':' in s:
+                    dt_obj = datetime.strptime(s, "%m/%d/%Y %H:%M:%S")
+                elif '-' in s and ':' not in s:
+                    dt_obj = datetime.strptime(s, "%Y-%m-%d")
+                elif '/' in s and ':' not in s:
+                    # handle mm/dd/yyyy
+                    dt_obj = datetime.strptime(s, "%m/%d/%Y")
+                else:
+                    # fallback try parsing
+                    dt_obj = pd.to_datetime(s)
+                return dt_obj.strftime("%m/%d/%Y 00:00:00")
+            except Exception:
+                return None
+
+        # Apply conversions for changed columns
+        for _, row in chnages.iterrows():
+            col = row['index']
+            desired = row['DD']
+            Actual = row['AD'] if 'AD' in row else None
+            # Only process existing columns
+            if col not in self.df_output.columns:
+                continue
+
+            if col in ['Start Date Time MM/DD/YYYY HH24:MI:SS', 'End Date Time MM/DD/YYYY HH24:MI:SS']:
+                # Replace '2999' to '2099' in strings (as per original)
+                self.df_output[col] = self.df_output[col].astype(str).str.replace('2999', '2099', regex=False)
+                # Convert formats
+                self.df_output[col] = self.df_output[col].apply(convert_to_mmddyyyy)
+            else:
+                # attempt astype if possible
+                try:
+                    if desired in ['int64', 'float64', 'object']:
+                        if desired == 'object':
+                            self.df_output[col] = self.df_output[col].astype(str)
+                        else:
+                            self.df_output[col] = self.df_output[col].astype(desired)
+                except Exception:
+                    # best effort: use to_numeric for numeric
+                    if desired in ['int64', 'float64']:
+                        self.df_output[col] = pd.to_numeric(self.df_output[col], errors='coerce')
+
+        self.proccesedfile = self.df_output.copy()
+
+        # Filter keep only records with End Date Time year = 2099
+        if 'End Date Time MM/DD/YYYY HH24:MI:SS' in self.df_output.columns:
+            # Ensure string type then slice characters to extract year
+            self.df_output = self.df_output[self.df_output['End Date Time MM/DD/YYYY HH24:MI:SS'].astype(str).str[6:10] == '2099']
+
+        # Preprocess input df_input similarly
+        for col in ['Customer Segment Type', 'Tier Max Txn Amount', 'Tier Min Txn Amount']:
+            if col in self.df_input.columns:
+                self.df_input[col] = pd.to_numeric(self.df_input[col], errors='coerce')
+        self.df_input.dropna(subset=[c for c in ['Customer Segment Type', 'Tier Max Txn Amount', 'Tier Min Txn Amount'] if c in self.df_input.columns], inplace=True)
+
+        # Drop some columns from input
+        dropcols_input = ['Start Date Time MM/DD/YYYY HH24:MI:SS', 'End Date Time MM/DD/YYYY HH24:MI:SS', 'Core Margin Type', 'S No']
+        self.df_input.drop(columns=[c for c in self.df_input.columns if c in dropcols_input], inplace=True, errors='ignore')
+
+        return self.df_output, self.df_input, self.proccesedfile
+
+
+class CreateOperation:
+    def __init__(self, df_output: pd.DataFrame, df_input: pd.DataFrame, proccesedfile: pd.DataFrame, select_date: dt.date):
+        self.df_output = df_output.copy()
+        self.df_input = df_input.copy()
+        self.proccesedfile = proccesedfile.copy()
+        self.date = select_date
+
+    def execute(self):
+        col1 = ['Entity', 'Product', 'Channel', 'Send Currency', 'Receive Currency',
+                'Customer Segment Type', 'Tier Min Txn Amount', 'Tier Max Txn Amount']
+        merged = pd.merge(self.df_output, self.df_input, on=col1, how='inner')
+
+        # set core margin value from input
+        merged['Core Margin Value_x'] = merged['Core Margin Value_y'] * 1.0
+        merged = merged.rename(columns={'Core Margin Value_x': 'Core Margin Value', 'Narrative_y': 'Narrative'}).drop(columns=[c for c in ['Core Margin Value_y', 'Narrative_x'] if c in merged.columns], errors='ignore')
+
+        on = ['Entity', 'Product', 'Channel', 'Send Currency', 'Receive Currency', 'Customer Segment Type',
+              'Tier Min Txn Amount', 'Tier Max Txn Amount', 'Start Date Time MM/DD/YYYY HH24:MI:SS',
+              'End Date Time MM/DD/YYYY HH24:MI:SS', 'Core Margin Type']
+
+        matches = pd.merge(self.proccesedfile, merged, on=on, how='inner')
+
+        mask = self.proccesedfile.set_index(on).index.isin(matches.set_index(on).index) if not matches.empty else pd.Series([False] * len(self.proccesedfile), index=self.proccesedfile.index)
+
+        # format select date to required string
+        if isinstance(self.date, (dt.date, dt.datetime)):
+            date_str = self.date.strftime("%m/%d/%Y 00:00:00")
+        else:
+            # if user passes a string, try parse
+            try:
+                date_obj = pd.to_datetime(self.date)
+                date_str = date_obj.strftime("%m/%d/%Y 00:00:00")
+            except Exception:
+                date_str = dt.datetime.today().strftime("%m/%d/%Y 00:00:00")
+
+        # end old records in processed file
+        if len(self.proccesedfile) > 0:
+            self.proccesedfile.loc[mask, 'End Date Time MM/DD/YYYY HH24:MI:SS'] = date_str
+
+        # set start date for merged new rows
+        merged['Start Date Time MM/DD/YYYY HH24:MI:SS'] = date_str
+
+        # concat and return
+        return pd.concat([self.proccesedfile, merged], ignore_index=True)
+
+
+class UpdateOperation:
+    def __init__(self, df_output: pd.DataFrame, df_input: pd.DataFrame, proccesedfile: pd.DataFrame):
+        self.df_output = df_output.copy()
+        self.df_input = df_input.copy()
+        self.proccesedfile = proccesedfile.copy()
+
+    def execute(self):
+        # drop narrative from input if present (as per original)
+        if 'Narrative' in self.df_input.columns:
+            self.df_input = self.df_input.drop(columns=['Narrative'], errors='ignore')
+
+        col1 = ['Entity', 'Product', 'Channel', 'Send Currency', 'Receive Currency',
+                'Customer Segment Type', 'Tier Min Txn Amount', 'Tier Max Txn Amount']
+        merged1 = pd.merge(self.df_output, self.df_input, on=col1, how='inner')
+
+        # update core margin value and drop old
+        merged1['Core Margin Value_x'] = merged1['Core Margin Value_y'] * 1.0
+        merged1 = merged1.rename(columns={'Core Margin Value_x': 'Core Margin Value'}).drop(columns=['Core Margin Value_y'], errors='ignore')
+        merged1 = merged1.loc[:, merged1.isnull().mean() <= 0.9]
+
+        com_col = ['Entity', 'Product', 'Channel', 'Send Currency', 'Receive Currency',
+                   'Customer Segment Type', 'Tier Min Txn Amount', 'Tier Max Txn Amount',
+                   'Start Date Time MM/DD/YYYY HH24:MI:SS', 'End Date Time MM/DD/YYYY HH24:MI:SS',
+                   'Narrative', 'Core Margin Type']
+
+        # keep unique (left_only) rows from processed file that are not in merged1
+        unique = self.proccesedfile.merge(merged1, on=com_col, how='left', indicator=True).query('_merge=="left_only"').drop(columns=['_merge'], errors='ignore')
+
+        # clean up column suffixes
+        unique.columns = unique.columns.str.replace('_y', '', regex=False)
+        unique.columns = unique.columns.str.replace('_x', '', regex=False)
+        unique = unique.loc[:, unique.isnull().mean() <= 0.9]
+
+        return pd.concat([unique, merged1], ignore_index=True)
+
+
+class Datefinder:
+    def __init__(self, df_output: pd.DataFrame, df_input: pd.DataFrame):
+        self.df_output = df_output.copy()
+        self.df_input = df_input.copy()
+
+    def calc(self):
+        col1 = ['Entity', 'Product', 'Channel', 'Send Currency', 'Receive Currency',
+                'Customer Segment Type', 'Tier Min Txn Amount', 'Tier Max Txn Amount']
+        merged = pd.merge(self.df_output, self.df_input, on=col1, how='inner')
+
+        if merged.empty or 'Start Date Time MM/DD/YYYY HH24:MI:SS' not in merged.columns:
+            raise ValueError("No common records or missing start date column")
+
+        min_date = pd.to_datetime(merged['Start Date Time MM/DD/YYYY HH24:MI:SS'], format="%m/%d/%Y 00:00:00", errors='coerce').max()
+        if pd.isna(min_date):
+            raise ValueError("Could not parse start dates in merged records")
+        return min_date
+
+#
+# === Streamlit UI pages ===
+#
+
+# Sidebar: sheet selector
+sheet = st.sidebar.radio("Select sheet:", ["Create", "Update", "Validate", "Visualize"], index=0)
+
+st.title("FX PCD - Core Margin Management")
+
+# -----------------------------
+# ---- CREATE PAGE ----------
+# -----------------------------
 if sheet == "Create":
-    st.header("Create")
-    st.write("This is the Create sheet.")
-    name = st.text_input("Enter a name")
-    if st.button("Create Entry"):
-        st.success(f"Created entry: {name}")
+    st.header("💱 Create CCY margin")
+    st.markdown("Rule-based approach that uses a Mapping file to set Margin % based on CCY pairs, Transaction Channels and Products")
 
+    mapfile = st.file_uploader("Upload Mapping file (Excel)", type=["xlsx"], key="create_mapfile")
+    if mapfile is not None:
+        try:
+            product = pd.read_excel(mapfile, sheet_name='Mappings', usecols="A:E").dropna()
+            Tier = pd.read_excel(mapfile, sheet_name='Mappings', usecols="G:J").dropna()
+            Segment = pd.read_excel(mapfile, sheet_name='Mappings', usecols="L:M").dropna()
+            prod_tier = pd.merge(Tier, product, left_on='Val1', right_on='Key1', how='inner').drop(columns=['Val1', 'Key1'], errors='ignore')
+            CCY = pd.read_excel(mapfile, sheet_name='Currenypair')
+            margins = pd.read_excel(mapfile, sheet_name='Margins')
+            Margins = pd.merge(margins, CCY, on='CCY Segment', how='inner')
+            final1 = pd.merge(Margins, prod_tier, left_on=['Products', 'Tiers', 'Channel'], right_on=['MV1', 'Tiers', 'MV2'], how='inner')
+            final = pd.merge(final1, Segment, left_on='Segment', right_on='MV3', how='inner')
+
+            final['Send Currency'] = final.CCY.str[0:3]
+            final['Receive Currency'] = final.CCY.str[4:]
+            # drop intermediate cols safely
+            final = final.drop(columns=[c for c in ['Products_x', 'Channel_x', 'CCY Segment', 'Segment_x', 'Tiers', 'MV1', 'MV3', 'MV2', 'CCY'] if c in final.columns], errors='ignore')
+            final = final.rename(columns={
+                'Core Margin': 'Core Margin Value',
+                'Min': 'Tier Min Txn Amount',
+                'Max': 'Tier Max Txn Amount',
+                'Products_y': 'Product',
+                'Segment_y': 'Customer Segment Type',
+                'Channel_y': 'Channel'
+            })
+
+            final['Entity'] = 'HSBC.FXPS.GDI.GT-SG-HBSG-RBWM'
+            final['Start Date Time MM/DD/YYYY HH24:MI:SS'] = dt.datetime.today().strftime("%m/%d/%Y 00:00:00")
+            final['End Date Time MM/DD/YYYY HH24:MI:SS'] = '01/01/2099  00:00:00'
+            final['Core Margin Value'] = final['Core Margin Value'] * 100
+            final['Core Margin Type'] = 'PERCENTAGE'
+
+            col_order = ['Entity', 'Product', 'Channel', 'Send Currency', 'Receive Currency',
+                         'Customer Segment Type', 'Tier Min Txn Amount', 'Tier Max Txn Amount',
+                         'Start Date Time MM/DD/YYYY HH24:MI:SS', 'End Date Time MM/DD/YYYY HH24:MI:SS',
+                         'Narrative', 'Core Margin Value', 'Core Margin Type']
+            final = final[[c for c in col_order if c in final.columns]]
+
+            channels = final[final['Product'] != 'GT'].drop_duplicates(keep='first')
+            GT_channel = final[final['Product'] == 'GT'].drop_duplicates(keep='first')
+
+            # Display
+            st.markdown("### CCY and Margins Data")
+            st.write("**Currency Pair (CCY)**")
+            st.dataframe(CCY.style.hide(axis="index"), use_container_width=True)
+            st.write("**Margins**")
+            st.dataframe(margins.style.hide(axis="index"), use_container_width=True)
+            st.markdown("### All channels margin data ")
+            st.dataframe(channels, use_container_width=True)
+            st.markdown("### GT Channel margin data ")
+            st.dataframe(GT_channel, use_container_width=True)
+
+            # Download All products
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                channels.to_excel(writer, index=False, sheet_name='Core_Margin_Configuration')
+                writer.save()
+            buffer.seek(0)
+            st.download_button(
+                label="📥 Download All_products Excel",
+                data=buffer,
+                file_name="Core_Margin_Configuration_all_products.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            # Download GT products
+            buffer1 = io.BytesIO()
+            with pd.ExcelWriter(buffer1, engine='xlsxwriter') as writer:
+                GT_channel.to_excel(writer, index=False, sheet_name='Core_Margin_Configuration')
+                writer.save()
+            buffer1.seek(0)
+            st.download_button(
+                label="📥 Download GT_products Excel",
+                data=buffer1,
+                file_name="Core_Margin_Configuration_GT_products.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        except Exception as e:
+            st.error(f"Error reading mapping file: {e}")
+
+
+# -----------------------------
+# ---- UPDATE PAGE ----------
+# -----------------------------
 elif sheet == "Update":
-    st.header("Update")
-    st.write("This is the Update sheet.")
-    record_id = st.number_input("Enter record ID to update", min_value=1)
-    new_value = st.text_input("New Value")
-    if st.button("Update Entry"):
-        st.info(f"Updated record {record_id} with value '{new_value}'.")
+    st.header("💱 Update CCY margins")
+    st.markdown("Adjusts Margins for Existing CCY pairs based on user inputs.")
 
+    # maintain processed lock per session
+    if 'processed' not in st.session_state:
+        st.session_state['processed'] = False
+
+    if not st.session_state['processed']:
+        Outputfile = st.file_uploader("Upload Main file (Excel) - Core_Margin_Configuration sheet", type=["xlsx"], key="update_output")
+        Inputfile = st.file_uploader("Upload New changes file (Excel)", type=["xlsx"], key="update_input")
+        operation = st.selectbox("Selection Operation", ["Create New Records", "Update Existing Records"], disabled=st.session_state['processed'], key="update_operation")
+
+        if Outputfile and Inputfile:
+            try:
+                df_output = pd.read_excel(Outputfile, sheet_name='Core_Margin_Configuration')
+            except Exception:
+                # fallback: try first sheet
+                df_output = pd.read_excel(Outputfile)
+            try:
+                df_input = pd.read_excel(Inputfile)
+            except Exception:
+                df_input = pd.read_excel(Inputfile)
+
+            processor = FileProcesser(df_output, df_input)
+            try:
+                df_output_proc, df_input_proc, proccesedfile = processor.preprocess()
+            except Exception as e:
+                st.error(f"Preprocessing failed: {e}")
+                df_output_proc, df_input_proc, proccesedfile = None, None, None
+
+            date_min = None
+            if operation == "Create New Records" and df_output_proc is not None and df_input_proc is not None:
+                try:
+                    date_class = Datefinder(df_output_proc, df_input_proc)
+                    date_min = date_class.calc()
+                    select_date = st.date_input("Select date of updating", value=date_min, min_value=date_min, key="update_select_date")
+                    st.write("### Start date for new records :   ", select_date.strftime('%b %d ,%Y'))
+                except Exception as e:
+                    st.error(f"No common records or incorrect dates - Reupload correct files: {e}")
+                    select_date = None
+            else:
+                select_date = None
+
+            if st.button(" ☑ click to Run ", key="update_run"):
+                if df_output_proc is None or df_input_proc is None or proccesedfile is None:
+                    st.error("Processing cannot run because preprocessing failed.")
+                else:
+                    op = CreateOperation(df_output_proc, df_input_proc, proccesedfile, select_date) if operation == "Create New Records" else UpdateOperation(df_output_proc, df_input_proc, proccesedfile)
+                    try:
+                        final_df = op.execute()
+                        st.session_state['final_df'] = final_df
+                        st.session_state['processed'] = True
+                        st.success("✅ Processing finished - you can now preview and download below.")
+                    except Exception as e:
+                        st.error(f"Operation execution failed: {e}")
+
+    # After processing (locked)
+    if st.session_state.get('processed', False):
+        st.success("✅ Processing Complete. Operation is now locked.")
+        final_df = st.session_state.get('final_df', pd.DataFrame())
+        st.write("### 🔍 Filter Final Data")
+        # Show filters based on column types
+        filter_cols = st.multiselect("Select columns to filter", final_df.columns.tolist(), key="update_filter_cols")
+        filtered_df = final_df.copy()
+        for col in filter_cols:
+            if pd.api.types.is_numeric_dtype(final_df[col]):
+                min_val = float(final_df[col].min())
+                max_val = float(final_df[col].max())
+                selected_range = st.slider(f"Filter by {col}", min_val, max_val, (min_val, max_val), key=f"update_slider_{col}")
+                filtered_df = filtered_df[(filtered_df[col] >= selected_range[0]) & (filtered_df[col] <= selected_range[1])]
+            elif pd.api.types.is_datetime64_any_dtype(final_df[col]):
+                start_date = final_df[col].min()
+                end_date = final_df[col].max()
+                date_range = st.date_input(f"Filter by {col}", (start_date, end_date), key=f"update_date_{col}")
+                if len(date_range) == 2:
+                    filtered_df = filtered_df[(final_df[col] >= pd.to_datetime(date_range[0])) & (final_df[col] <= pd.to_datetime(date_range[1]))]
+            else:
+                options = final_df[col].dropna().unique().tolist()
+                selected_options = st.multiselect(f"Filter by {col}", options, default=[], key=f"update_multiselect_{col}")
+                if selected_options:
+                    filtered_df = filtered_df[filtered_df[col].isin(selected_options)]
+
+        st.write("### 📄 Filtered Data Preview")
+        st.dataframe(filtered_df, use_container_width=True)
+
+        # Prepare download buffers
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            filtered_df.to_excel(writer, index=False, sheet_name='Core_Margin_Configuration')
+            writer.save()
+        buffer.seek(0)
+
+        full_buffer = io.BytesIO()
+        with pd.ExcelWriter(full_buffer, engine='xlsxwriter') as writer:
+            final_df.to_excel(writer, index=False, sheet_name='Core_Margin_Configuration')
+            writer.save()
+        full_buffer.seek(0)
+
+        col1, col2 = st.columns(2)
+        DATE_PART = dt.datetime.today().strftime("%d_%b_%H_%M_%p")
+        with col1:
+            st.download_button(
+                label="📥 Download Filtered Excel",
+                data=buffer,
+                file_name="FilteredOutput_" + DATE_PART + ".xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        with col2:
+            st.download_button(
+                label="📥 Download Full Excel",
+                data=full_buffer,
+                file_name="Updated_data_" + DATE_PART + ".xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+
+# -----------------------------
+# ---- VALIDATE PAGE (blank) ----------
+# -----------------------------
 elif sheet == "Validate":
-    st.header("Validate")
-    st.write("This is the Validate sheet.")
-    uploaded_file = st.file_uploader("Upload file for validation", type=["csv", "xlsx"])
-    if uploaded_file:
-        st.success("File uploaded and ready for validation.")
+    st.header("🔎 Validate")
+    st.markdown("**Placeholder** — validation logic will be integrated here. Send me your validation code/spec and I'll wire it up.")
+    st.info("No validation operations implemented yet.")
 
+
+# -----------------------------
+# ---- VISUALIZE PAGE (blank) ----------
+# -----------------------------
 elif sheet == "Visualize":
-    st.header("Visualize")
-    st.write("This is the Visualize sheet.")
-    st.line_chart({"Data": [1, 3, 2, 4, 5, 3, 4]})
+    st.header("📊 Visualize")
+    st.markdown("**Placeholder** — visualization logic will be integrated here. Send me the plots/metrics you want to see.")
+    st.info("No visualization implemented yet.")
+
+
+# End of script
