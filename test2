@@ -8,10 +8,8 @@ st.set_page_config(page_title="Forex Insights Dashboard", layout="wide")
 # ---------------- Load Data ----------------
 @st.cache_data
 def load_data(file):
-    df = pd.read_csv(file, parse_dates=['Date'])
+    df = pd.read_csv(file, parse_dates=['Date'], dayfirst=False)
     df.columns = [c.strip() for c in df.columns]  # normalize col names
-    if 'Margin Rate' in df.columns:
-        df['Margin Rate'] = df['Margin Rate'].astype(str).str.replace('%', '').astype(float) / 100
     return df
 
 # ---------------- KPI Calculations ----------------
@@ -23,29 +21,36 @@ def compute_kpis(df):
         "Min Transaction Value (USD)": df['Min Transaction Value (USD)'].min(),
         "Max Transaction Value (USD)": df['Max Transaction Value (USD)'].max(),
         "Unique Currency Pairs": df['Currency Pair'].nunique(),
-        "Average Margin Rate (%)": df['Margin Rate'].mean() * 100,
+        "Average Margin Rate (%)": df['Margin Rate'].mean() * 100 if df['Margin Rate'].dtype != object else None,
         "Total Spread Earned (USD)": df['Total Spread Earned (USD)'].sum(),
         "Avg. Spread per Transaction (USD)": df['Total Spread Earned (USD)'].sum() / df['No. of Transactions'].sum(),
-        "Average Conversion Rate (%)": df['Conversion Rate (%)'].mean(),
-        "Average Repeat Customer (%)": df['Repeat Customer %'].mean(),
-        "Average CAC (USD)": df['Customer Acquisition Cost (USD)'].mean()
+        "Average Conversion Rate (%)": df['Conversion Rate (%)'].mean() if 'Conversion Rate (%)' in df.columns else None,
+        "Average Repeat Customer (%)": df['Repeat Customer %'].mean() if 'Repeat Customer %' in df.columns else None,
+        "Average CAC (USD)": df['Customer Acquisition Cost (USD)'].mean() if 'Customer Acquisition Cost (USD)' in df.columns else None
     }
     return kpis
 
 # ---------------- Streamlit App ----------------
 st.title("💹 Forex Trading Insights Dashboard")
+st.markdown("Upload your dataset to explore KPIs, profitability, and trends.")
 
+# File upload
 uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 if uploaded_file:
     df = load_data(uploaded_file)
 
-    # ---------------- Filters ----------------
+    # Filters
     col1, col2 = st.columns(2)
-    selected_markets = col1.multiselect("Select Market", df["Market"].unique(), default=df["Market"].unique())
-    selected_segments = col2.multiselect("Select Segment", df["Segment"].unique(), default=df["Segment"].unique())
+    with col1:
+        market_filter = st.multiselect("Select Market", df["Market"].unique(), default=df["Market"].unique())
+    with col2:
+        segment_filter = st.multiselect("Select Segment", df["Segment"].unique(), default=df["Segment"].unique())
 
-    # Apply filters
-    df = df[df["Market"].isin(selected_markets) & df["Segment"].isin(selected_segments)]
+    df = df[df["Market"].isin(market_filter) & df["Segment"].isin(segment_filter)]
+
+    # Show Data
+    with st.expander("View Raw Data"):
+        st.dataframe(df)
 
     # KPIs
     kpis = compute_kpis(df)
@@ -53,11 +58,14 @@ if uploaded_file:
     kpi_cols = st.columns(4)
     for i, (metric, value) in enumerate(kpis.items()):
         with kpi_cols[i % 4]:
-            st.metric(metric, f"{value:,.2f}")
+            if value is not None:
+                st.metric(metric, f"{value:,.2f}")
+            else:
+                st.metric(metric, "N/A")
 
     st.markdown("---")
 
-    # ----------- Row 1 -----------
+    # ----------- Row 1: Three Charts -----------
     col_a, col_b, col_c = st.columns(3)
 
     with col_a:
@@ -73,12 +81,12 @@ if uploaded_file:
         st.plotly_chart(fig2, use_container_width=True)
 
     with col_c:
-        st.subheader("Total Spread Earned (USD) in Currency Pair")
+        st.subheader("Total Spread Earned (USD) by Currency Pair")
         fig3 = px.line(df.groupby("Currency Pair", as_index=False)['Total Spread Earned (USD)'].sum(),
                        x="Currency Pair", y="Total Spread Earned (USD)", markers=True)
         st.plotly_chart(fig3, use_container_width=True)
 
-    # ----------- Row 2 -----------
+    # ----------- Row 2: Three Charts -----------
     col_d, col_e, col_f = st.columns(3)
 
     with col_d:
@@ -94,10 +102,38 @@ if uploaded_file:
 
     with col_f:
         st.subheader("Top Currency Pairs by Transaction Value")
-        top_cp = df.groupby("Currency Pair", as_index=False)['Transaction Amount (USD)'].sum().sort_values(
-            by="Transaction Amount (USD)", ascending=False)
-        fig6 = px.bar(top_cp, x="Currency Pair", y="Transaction Amount (USD)", text_auto=True)
+        cp_summary = df.groupby('Currency Pair', as_index=False)['Transaction Amount (USD)'].sum()
+        cp_summary = cp_summary.sort_values(by="Transaction Amount (USD)", ascending=False)
+        fig6 = px.bar(cp_summary, x="Currency Pair", y="Transaction Amount (USD)", text_auto=True)
         st.plotly_chart(fig6, use_container_width=True)
+
+    # ----------- Row 3: Monthly Amount, Count & Avg Value with MoM Change -----------
+    col_g, col_h, col_i = st.columns(3)
+    df['Month'] = df['Date'].dt.to_period('M').dt.to_timestamp()
+
+    with col_g:
+        st.subheader("Monthly Transaction Amount")
+        monthly_amount = df.groupby('Month', as_index=False)['Transaction Amount (USD)'].sum()
+        monthly_amount['MoM %'] = monthly_amount['Transaction Amount (USD)'].pct_change() * 100
+        fig7 = px.line(monthly_amount, x="Month", y="Transaction Amount (USD)", markers=True,
+                       text=monthly_amount['MoM %'].round(2).astype(str) + '%')
+        st.plotly_chart(fig7, use_container_width=True)
+
+    with col_h:
+        st.subheader("Monthly Transaction Count")
+        monthly_count = df.groupby('Month', as_index=False)['No. of Transactions'].sum()
+        monthly_count['MoM %'] = monthly_count['No. of Transactions'].pct_change() * 100
+        fig8 = px.line(monthly_count, x="Month", y="No. of Transactions", markers=True,
+                       text=monthly_count['MoM %'].round(2).astype(str) + '%')
+        st.plotly_chart(fig8, use_container_width=True)
+
+    with col_i:
+        st.subheader("Monthly Avg. Transaction Value")
+        monthly_avg_value = df.groupby('Month', as_index=False)['Avg. Transaction Value (USD)'].mean()
+        monthly_avg_value['MoM %'] = monthly_avg_value['Avg. Transaction Value (USD)'].pct_change() * 100
+        fig9 = px.line(monthly_avg_value, x="Month", y="Avg. Transaction Value (USD)", markers=True,
+                       text=monthly_avg_value['MoM %'].round(2).astype(str) + '%')
+        st.plotly_chart(fig9, use_container_width=True)
 
 else:
     st.info("Please upload a CSV file to see the dashboard.")
