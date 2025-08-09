@@ -1,90 +1,35 @@
-def generate_insights(df):
-    amount_col = 'Transaction Amount (USD)'
-    txn_col = 'No. of Transactions'
+# 8️⃣ Margin Impact Analysis
+if 'Margin Rate' in df.columns:
+    # Scatter: Margin vs Amount
+    fig = px.scatter(df, x='Margin Rate', y=amount_col, 
+                     color='Product', 
+                     hover_data=['Currency Pair', 'Channel', 'Segment'],
+                     title='Impact of Margin Rate on Transaction Amount')
+    fig.write_html(f"{outdir}/margin_vs_amount.html")
 
-    # Overall KPIs
-    total_value = df[amount_col].sum()
-    total_count = df[txn_col].sum()
-    avg_txn_size = total_value / total_count if total_count > 0 else 0
+    # Scatter: Margin vs No. of Transactions
+    fig = px.scatter(df, x='Margin Rate', y=txn_col,
+                     color='Product',
+                     hover_data=['Currency Pair', 'Channel', 'Segment'],
+                     title='Impact of Margin Rate on Number of Transactions')
+    fig.write_html(f"{outdir}/margin_vs_transactions.html")
 
-    st.metric("Total Transaction Value (USD)", f"${total_value:,.2f}")
-    st.metric("Total Transactions", f"{total_count:,}")
-    st.metric("Average Transaction Size (USD)", f"${avg_txn_size:,.2f}")
-
-    st.markdown("---")
-
-    # ---------- First row of charts ----------
-    col1, col2, col3 = st.columns(3)
-
-    # Top currency pairs
-    cp_summary = df.groupby('Currency Pair').agg(
-        total_value=(amount_col, 'sum'),
-        total_count=(txn_col, 'sum')
-    ).reset_index().sort_values(by='total_value', ascending=False)
-    with col1:
-        st.subheader("Top Currency Pairs by Value")
-        fig1 = px.bar(cp_summary.head(10), x='Currency Pair', y='total_value',
-                      title="Top Currency Pairs by Value")
-        st.plotly_chart(fig1, use_container_width=True)
-
-    # Channel Analysis
-    channel_summary = df.groupby('Channel').agg(
+    # Aggregated impact per margin bucket
+    df['Margin Bucket'] = pd.cut(df['Margin Rate'],
+                                 bins=[0, 0.0085, 0.0095, 0.0115, 0.0185], 
+                                 labels=['Low', 'Medium', 'High', 'Very High'])
+    margin_summary = df.groupby('Margin Bucket').agg(
         total_value=(amount_col, 'sum'),
         total_count=(txn_col, 'sum'),
-        avg_ticket=(amount_col, 'mean')
+        avg_amount=(amount_col, 'mean')
     ).reset_index()
-    with col2:
-        st.subheader("Channel Analysis")
-        fig2 = px.bar(channel_summary, x='Channel', y='total_value', title="Transaction Value by Channel")
-        st.plotly_chart(fig2, use_container_width=True)
 
-    # Segment Analysis
-    segment_summary = df.groupby('Segment').agg(
-        total_value=(amount_col, 'sum'),
-        total_count=(txn_col, 'sum'),
-        avg_ticket=(amount_col, 'mean')
-    ).reset_index()
-    with col3:
-        st.subheader("Segment Analysis")
-        fig3 = px.pie(segment_summary, names='Segment', values='total_value',
-                      title='Transaction Value by Segment')
-        st.plotly_chart(fig3, use_container_width=True)
+    margin_summary.to_csv(f"{outdir}/margin_bucket_summary.csv", index=False)
 
-    # ---------- Second row of charts ----------
-    col4, col5, col6 = st.columns(3)
+    fig = px.bar(margin_summary, x='Margin Bucket', y='total_value',
+                 title='Total Transaction Value by Margin Bucket')
+    fig.write_html(f"{outdir}/margin_bucket_value.html')
 
-    # Revenue by Currency Pair
-    if 'Margin Rate' in df.columns:
-        df['Revenue'] = df[amount_col] * df['Margin Rate']
-        margin_cp = df.groupby('Currency Pair').agg(
-            avg_margin=('Margin Rate', 'mean'),
-            total_revenue=('Revenue', 'sum')
-        ).reset_index().sort_values(by='total_revenue', ascending=False)
-        with col4:
-            st.subheader("Revenue by Currency Pair")
-            fig4 = px.bar(margin_cp, x='Currency Pair', y='total_revenue',
-                          title="Total Revenue by Currency Pair")
-            st.plotly_chart(fig4, use_container_width=True)
-
-    # Monthly Transaction Trends
-    df['Month'] = df['Date'].dt.to_period('M').dt.to_timestamp()
-    monthly = df.groupby('Month').agg(
-        total_value=(amount_col, 'sum'),
-        total_count=(txn_col, 'sum')
-    ).reset_index()
-    with col5:
-        st.subheader("Monthly Transaction Trends")
-        fig5 = px.line(monthly, x='Month', y='total_value', markers=True,
-                       title="Monthly Transaction Value Trend")
-        st.plotly_chart(fig5, use_container_width=True)
-
-    # Currency Pair × Channel Heatmap
-    if 'Channel' in df.columns:
-        pivot_channel = df.pivot_table(index='Currency Pair', columns='Channel',
-                                       values=amount_col, aggfunc='sum', fill_value=0)
-        with col6:
-            st.subheader("Currency Pair × Channel Heatmap")
-            fig6 = px.imshow(pivot_channel,
-                             title='Transaction Value by Currency Pair and Channel',
-                             labels=dict(x="Channel", y="Currency Pair", color="Value"))
-            st.plotly_chart(fig6, use_container_width=True)
+    fig = px.bar(margin_summary, x='Margin Bucket', y='total_count',
+                 title='Total Transactions by Margin Bucket')
+    fig.write_html(f"{outdir}/margin_bucket_count.html')
