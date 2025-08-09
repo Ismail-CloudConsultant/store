@@ -1,81 +1,75 @@
-def validate_tab():
-    st.header("Validation Report")
-    if st.session_state.updated_file is None:
-        st.warning("No updated file found. Please run Update first.")
-        return
+import pandas as pd
+import random
 
-    df_main = st.session_state.main_file
-    df_updated = st.session_state.updated_file
+# Fixed lists
+currency_pairs = [
+    "AUD-NZD", "USD-CAD", "CAD-USD", "NZD-CAD", "NZD-AUD", "USD-NZD", 
+    "CAD-GBP", "AUD-CAD", "NZD-GBP", "CAD-AUD", "GBP-NZD", "USD-JPY", 
+    "CAD-NZD", "NZD-USD", "GBP-CAD", "JPY-USD"
+]
+segments = ["Personal Banking", "Premier", "Top Tier"]
+channels = ["Digital", "Branch", "Mobile"]
+transaction_brackets = ["0 - 14K", "14K - 28K", "28K - 70K", "70K - 280K", "> 280K"]
+margin_rates = [0.70, 0.85, 0.90, 0.95, 1.05, 1.10, 1.15, 1.20, 1.80]  # as percentages
+dates = [
+    "2024-07-01", "2024-08-01", "2024-09-01", "2024-10-01", "2024-11-01", "2024-12-01",
+    "2025-01-01", "2025-02-01", "2025-03-01", "2025-04-01", "2025-05-01", "2025-06-01", "2025-07-01"
+]
 
-    # Ensure indexes match
-    df_main = df_main.reset_index(drop=True)
-    df_updated = df_updated.reset_index(drop=True)
+def generate_data(n=1500):
+    data = []
+    for _ in range(n):
+        date = random.choice(dates)
+        currency_pair = random.choice(currency_pairs)
+        segment = random.choice(segments)
+        channel = random.choice(channels)
+        bracket = random.choice(transaction_brackets)
+        margin_rate = random.choice(margin_rates)
+        
+        # Generate metrics based on transaction bracket
+        if bracket == "0 - 14K":
+            min_amt, max_amt = 100, 14000
+        elif bracket == "14K - 28K":
+            min_amt, max_amt = 14000, 28000
+        elif bracket == "28K - 70K":
+            min_amt, max_amt = 28000, 70000
+        elif bracket == "70K - 280K":
+            min_amt, max_amt = 70000, 280000
+        else:  # > 280K
+            min_amt, max_amt = 280000, 1000000
 
-    # Identify changes
-    changes_mask = ~(df_main.eq(df_updated)).all(axis=1)
-    changed_rows = df_updated[changes_mask]
-    total_rows = len(df_main)
-    num_changed_rows = changes_mask.sum()
+        txn_count = random.randint(5, 500)
+        txn_amount = round(random.uniform(min_amt, max_amt), 2)
+        avg_txn_value = round(txn_amount / txn_count, 2)
+        min_txn_value = round(random.uniform(min_amt / 10, avg_txn_value * 0.8), 2)
+        max_txn_value = round(random.uniform(avg_txn_value * 1.1, max_amt / 2), 2)
 
-    # Currency changes
-    if "Currency" in df_main.columns:
-        currency_changes = (df_main["Currency"] != df_updated["Currency"]).sum()
-        changed_currencies = df_updated.loc[df_main["Currency"] != df_updated["Currency"], "Currency"].unique()
-    else:
-        currency_changes = 0
-        changed_currencies = []
+        # Profitability
+        total_spread = round(txn_amount * (margin_rate / 100), 2)
+        avg_spread_per_txn = round(total_spread / txn_count, 2)
 
-    # Segment changes
-    if "Segment" in df_main.columns:
-        segment_changes = df_updated.loc[df_main["Segment"] != df_updated["Segment"], "Segment"].value_counts()
-    else:
-        segment_changes = pd.Series(dtype=int)
+        # Additional KPIs
+        conversion_rate = round(random.uniform(50, 95), 1)  # %
+        repeat_customer_pct = round(random.uniform(20, 70), 1)  # %
+        cac = round(random.uniform(5, 50), 2)  # USD
 
-    # Tier changes
-    if "Tier" in df_main.columns:
-        tier_changes = df_updated.loc[df_main["Tier"] != df_updated["Tier"], "Tier"].value_counts()
-    else:
-        tier_changes = pd.Series(dtype=int)
+        data.append([
+            date, currency_pair, segment, channel, bracket, f"{margin_rate}%",
+            txn_count, txn_amount, avg_txn_value, min_txn_value, max_txn_value,
+            total_spread, avg_spread_per_txn, conversion_rate, repeat_customer_pct, cac
+        ])
 
-    # Metrics summary
-    st.metric("Total Rows", total_rows)
-    st.metric("Rows Changed", num_changed_rows)
-    st.metric("Currency Changes", currency_changes)
+    columns = [
+        "Date", "Currency Pair", "Segment", "Channel", "Transaction Bracket", "Margin Rate",
+        "No. of Transactions", "Transaction Amount (USD)", "Avg. Transaction Value (USD)",
+        "Min Transaction Value (USD)", "Max Transaction Value (USD)",
+        "Total Spread Earned (USD)", "Avg. Spread per Transaction (USD)",
+        "Conversion Rate (%)", "Repeat Customer %", "Customer Acquisition Cost (USD)"
+    ]
+    return pd.DataFrame(data, columns=columns)
 
-    st.subheader("Changed Currencies")
-    st.write(list(changed_currencies))
-
-    st.subheader("New Segments")
-    st.dataframe(segment_changes)
-
-    st.subheader("Changed Tiers")
-    st.dataframe(tier_changes)
-
-    # Visualizations
-    if not segment_changes.empty:
-        fig_seg = px.bar(segment_changes, x=segment_changes.index, y=segment_changes.values, title="Segment Changes")
-        st.plotly_chart(fig_seg)
-
-    if not tier_changes.empty:
-        fig_tier = px.pie(values=tier_changes.values, names=tier_changes.index, title="Tier Changes")
-        st.plotly_chart(fig_tier)
-
-# ---------- VISUALIZE TAB ----------
-def visualize_tab():
-    st.header("Visualize")
-    if st.session_state.updated_file is None:
-        st.warning("No data to visualize.")
-        return
-    st.dataframe(st.session_state.updated_file)
-
-# ---------- TAB NAVIGATION ----------
-tabs = {
-    "Create": create_tab,
-    "Update": update_tab,
-    "Validate": validate_tab,
-    "Visualize": visualize_tab
-}
-
-# Sidebar navigation
-selected_tab = st.sidebar.radio("Navigation", list(tabs.keys()), index=list(tabs.keys()).index(st.session_state.active_tab))
-tabs[selected_tab]()
+# Generate & Save
+df = generate_data(1500)
+df.to_csv("forex_transactions_sample.csv", index=False)
+print("✅ Dataset generated: forex_transactions_sample.csv")
+print(df.head())
