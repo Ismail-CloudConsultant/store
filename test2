@@ -1,35 +1,111 @@
-# 8️⃣ Margin Impact Analysis
-if 'Margin Rate' in df.columns:
-    # Scatter: Margin vs Amount
-    fig = px.scatter(df, x='Margin Rate', y=amount_col, 
-                     color='Product', 
-                     hover_data=['Currency Pair', 'Channel', 'Segment'],
-                     title='Impact of Margin Rate on Transaction Amount')
-    fig.write_html(f"{outdir}/margin_vs_amount.html")
+# forex_dashboard_streamlit.py
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
 
-    # Scatter: Margin vs No. of Transactions
-    fig = px.scatter(df, x='Margin Rate', y=txn_col,
-                     color='Product',
-                     hover_data=['Currency Pair', 'Channel', 'Segment'],
-                     title='Impact of Margin Rate on Number of Transactions')
-    fig.write_html(f"{outdir}/margin_vs_transactions.html")
+st.set_page_config(page_title="Forex Insights Dashboard", layout="wide")
 
-    # Aggregated impact per margin bucket
-    df['Margin Bucket'] = pd.cut(df['Margin Rate'],
-                                 bins=[0, 0.0085, 0.0095, 0.0115, 0.0185], 
-                                 labels=['Low', 'Medium', 'High', 'Very High'])
-    margin_summary = df.groupby('Margin Bucket').agg(
-        total_value=(amount_col, 'sum'),
-        total_count=(txn_col, 'sum'),
-        avg_amount=(amount_col, 'mean')
-    ).reset_index()
+# ---------------- Load Data ----------------
+@st.cache_data
+def load_data(file):
+    df = pd.read_csv(file, parse_dates=['Date'], dayfirst=False)
+    df.columns = [c.strip() for c in df.columns]  # normalize col names
+    if 'Margin Rate' in df.columns:
+        df['Margin Rate'] = df['Margin Rate'].astype(float)
+    return df
 
-    margin_summary.to_csv(f"{outdir}/margin_bucket_summary.csv", index=False)
+# ---------------- KPI Calculations ----------------
+def compute_kpis(df):
+    kpis = {
+        "Total Transaction Count": df['No. of Transactions'].sum(),
+        "Total Transaction Value (USD)": df['Transaction Amount (USD)'].sum(),
+        "Average Transaction Value (USD)": df['Transaction Amount (USD)'].sum() / df['No. of Transactions'].sum(),
+        "Min Transaction Value (USD)": df['Min Transaction Value (USD)'].min(),
+        "Max Transaction Value (USD)": df['Max Transaction Value (USD)'].max(),
+        "Unique Currency Pairs": df['Currency Pair'].nunique(),
+        "Average Margin Rate (%)": df['Margin Rate'].mean() * 100,
+        "Total Spread Earned (USD)": df['Total Spread Earned (USD)'].sum(),
+        "Avg. Spread per Transaction (USD)": df['Total Spread Earned (USD)'].sum() / df['No. of Transactions'].sum(),
+        "Average Conversion Rate (%)": df['Conversion Rate (%)'].mean(),
+        "Average Repeat Customer (%)": df['Repeat Customer %'].mean(),
+        "Average CAC (USD)": df['Customer Acquisition Cost (USD)'].mean(),
+        "Total Revenue (USD)": df['Revenue'].sum()
+    }
+    return kpis
 
-    fig = px.bar(margin_summary, x='Margin Bucket', y='total_value',
-                 title='Total Transaction Value by Margin Bucket')
-    fig.write_html(f"{outdir}/margin_bucket_value.html')
+# ---------------- Streamlit App ----------------
+st.title("💹 Forex Trading Insights Dashboard")
+st.markdown("Upload your dataset to explore KPIs, profitability, and trends.")
 
-    fig = px.bar(margin_summary, x='Margin Bucket', y='total_count',
-                 title='Total Transactions by Margin Bucket')
-    fig.write_html(f"{outdir}/margin_bucket_count.html')
+# File upload
+uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+if uploaded_file:
+    df = load_data(uploaded_file)
+
+    # Show Data
+    with st.expander("View Raw Data"):
+        st.dataframe(df)
+
+    # KPIs
+    kpis = compute_kpis(df)
+    st.subheader("📊 Key Performance Indicators")
+    kpi_cols = st.columns(4)
+    for i, (metric, value) in enumerate(kpis.items()):
+        with kpi_cols[i % 4]:
+            st.metric(metric, f"{value:,.2f}" if isinstance(value, (int, float)) else value)
+
+    st.markdown("---")
+
+    # Transaction Value by Channel
+    st.subheader("Transaction Value by Channel")
+    fig_channel = px.bar(df.groupby("Channel", as_index=False)['Transaction Amount (USD)'].sum(),
+                         x="Channel", y="Transaction Amount (USD)", text_auto=True)
+    st.plotly_chart(fig_channel, use_container_width=True)
+
+    # Transaction Value by Segment
+    st.subheader("Transaction Value by Segment")
+    fig_segment = px.pie(df, names="Segment", values="Transaction Amount (USD)")
+    st.plotly_chart(fig_segment, use_container_width=True)
+
+    # Currency Pair Performance
+    st.subheader("Top Currency Pairs by Transaction Value")
+    cp_summary = df.groupby('Currency Pair', as_index=False)['Transaction Amount (USD)'].sum()
+    cp_summary = cp_summary.sort_values(by="Transaction Amount (USD)", ascending=False)
+    fig_cp = px.bar(cp_summary, x="Currency Pair", y="Transaction Amount (USD)", text_auto=True)
+    st.plotly_chart(fig_cp, use_container_width=True)
+
+    # Revenue by Currency Pair
+    st.subheader("Revenue by Currency Pair")
+    fig_rev = px.bar(df.groupby('Currency Pair', as_index=False)['Revenue'].sum(),
+                     x="Currency Pair", y="Revenue", text_auto=True)
+    st.plotly_chart(fig_rev, use_container_width=True)
+
+    # Heatmap: Currency Pair × Channel
+    st.subheader("Heatmap: Currency Pair × Channel (Transaction Value)")
+    pivot_channel = df.pivot_table(index="Currency Pair", columns="Channel",
+                                   values="Transaction Amount (USD)", aggfunc="sum", fill_value=0)
+    fig_heatmap = px.imshow(pivot_channel, text_auto=True,
+                            labels=dict(x="Channel", y="Currency Pair", color="Value"))
+    st.plotly_chart(fig_heatmap, use_container_width=True)
+
+    # Monthly Trends
+    st.subheader("Monthly Transaction Value Trend")
+    df['Month'] = df['Date'].dt.to_period('M').dt.to_timestamp()
+    monthly = df.groupby('Month', as_index=False)['Transaction Amount (USD)'].sum()
+    fig_month = px.line(monthly, x="Month", y="Transaction Amount (USD)", markers=True)
+    st.plotly_chart(fig_month, use_container_width=True)
+
+    # CAC vs Revenue per Segment
+    st.subheader("Customer Acquisition Cost vs Revenue by Segment")
+    cac_rev = df.groupby('Segment', as_index=False).agg(
+        avg_cac=('Customer Acquisition Cost (USD)', 'mean'),
+        total_revenue=('Revenue', 'sum')
+    )
+    fig_cac = px.scatter(cac_rev, x='avg_cac', y='total_revenue', size='total_revenue',
+                         color='Segment', text='Segment',
+                         labels={'avg_cac': 'Avg. CAC (USD)', 'total_revenue': 'Total Revenue (USD)'})
+    st.plotly_chart(fig_cac, use_container_width=True)
+
+else:
+    st.info("Please upload a CSV file to see the dashboard.")
