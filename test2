@@ -1,7 +1,6 @@
 # forex_dashboard_streamlit.py
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
 
 st.set_page_config(page_title="Forex Insights Dashboard", layout="wide")
@@ -9,10 +8,10 @@ st.set_page_config(page_title="Forex Insights Dashboard", layout="wide")
 # ---------------- Load Data ----------------
 @st.cache_data
 def load_data(file):
-    df = pd.read_csv(file, parse_dates=['Date'], dayfirst=False)
+    df = pd.read_csv(file, parse_dates=['Date'])
     df.columns = [c.strip() for c in df.columns]  # normalize col names
     if 'Margin Rate' in df.columns:
-        df['Margin Rate'] = df['Margin Rate'].astype(float)
+        df['Margin Rate'] = df['Margin Rate'].astype(str).str.replace('%', '').astype(float) / 100
     return df
 
 # ---------------- KPI Calculations ----------------
@@ -29,38 +28,24 @@ def compute_kpis(df):
         "Avg. Spread per Transaction (USD)": df['Total Spread Earned (USD)'].sum() / df['No. of Transactions'].sum(),
         "Average Conversion Rate (%)": df['Conversion Rate (%)'].mean(),
         "Average Repeat Customer (%)": df['Repeat Customer %'].mean(),
-        "Average CAC (USD)": df['Customer Acquisition Cost (USD)'].mean(),
-        "Total Revenue (USD)": df['Revenue'].sum()
+        "Average CAC (USD)": df['Customer Acquisition Cost (USD)'].mean()
     }
     return kpis
 
 # ---------------- Streamlit App ----------------
 st.title("💹 Forex Trading Insights Dashboard")
-st.markdown("Upload your dataset to explore KPIs, profitability, and trends.")
 
-# File upload
 uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 if uploaded_file:
     df = load_data(uploaded_file)
 
     # ---------------- Filters ----------------
     col1, col2 = st.columns(2)
-    if "Market" in df.columns:
-        selected_markets = col1.multiselect("Select Market", df["Market"].unique(), default=df["Market"].unique())
-    else:
-        selected_markets = df["Market"].unique()
-
-    if "Segment" in df.columns:
-        selected_segments = col2.multiselect("Select Segment", df["Segment"].unique(), default=df["Segment"].unique())
-    else:
-        selected_segments = df["Segment"].unique()
+    selected_markets = col1.multiselect("Select Market", df["Market"].unique(), default=df["Market"].unique())
+    selected_segments = col2.multiselect("Select Segment", df["Segment"].unique(), default=df["Segment"].unique())
 
     # Apply filters
     df = df[df["Market"].isin(selected_markets) & df["Segment"].isin(selected_segments)]
-
-    # Show Data
-    with st.expander("View Raw Data"):
-        st.dataframe(df)
 
     # KPIs
     kpis = compute_kpis(df)
@@ -68,59 +53,51 @@ if uploaded_file:
     kpi_cols = st.columns(4)
     for i, (metric, value) in enumerate(kpis.items()):
         with kpi_cols[i % 4]:
-            st.metric(metric, f"{value:,.2f}" if isinstance(value, (int, float)) else value)
+            st.metric(metric, f"{value:,.2f}")
 
     st.markdown("---")
 
-    # Transaction Value by Channel
-    st.subheader("Transaction Value by Channel")
-    fig_channel = px.bar(df.groupby("Channel", as_index=False)['Transaction Amount (USD)'].sum(),
-                         x="Channel", y="Transaction Amount (USD)", text_auto=True)
-    st.plotly_chart(fig_channel, use_container_width=True)
+    # ----------- Row 1 -----------
+    col_a, col_b, col_c = st.columns(3)
 
-    # Transaction Value by Segment
-    st.subheader("Transaction Value by Segment")
-    fig_segment = px.pie(df, names="Segment", values="Transaction Amount (USD)")
-    st.plotly_chart(fig_segment, use_container_width=True)
+    with col_a:
+        st.subheader("Total Transaction Count by Currency Pair")
+        fig1 = px.bar(df.groupby("Currency Pair", as_index=False)['No. of Transactions'].sum(),
+                      x="Currency Pair", y="No. of Transactions", text_auto=True)
+        st.plotly_chart(fig1, use_container_width=True)
 
-    # Currency Pair Performance
-    st.subheader("Top Currency Pairs by Transaction Value")
-    cp_summary = df.groupby('Currency Pair', as_index=False)['Transaction Amount (USD)'].sum()
-    cp_summary = cp_summary.sort_values(by="Transaction Amount (USD)", ascending=False)
-    fig_cp = px.bar(cp_summary, x="Currency Pair", y="Transaction Amount (USD)", text_auto=True)
-    st.plotly_chart(fig_cp, use_container_width=True)
+    with col_b:
+        st.subheader("Total Transaction Value (USD) by Currency Pair")
+        fig2 = px.bar(df.groupby("Currency Pair", as_index=False)['Transaction Amount (USD)'].sum(),
+                      x="Currency Pair", y="Transaction Amount (USD)", text_auto=True)
+        st.plotly_chart(fig2, use_container_width=True)
 
-    # Revenue by Currency Pair
-    st.subheader("Revenue by Currency Pair")
-    fig_rev = px.bar(df.groupby('Currency Pair', as_index=False)['Revenue'].sum(),
-                     x="Currency Pair", y="Revenue", text_auto=True)
-    st.plotly_chart(fig_rev, use_container_width=True)
+    with col_c:
+        st.subheader("Total Spread Earned (USD) in Currency Pair")
+        fig3 = px.line(df.groupby("Currency Pair", as_index=False)['Total Spread Earned (USD)'].sum(),
+                       x="Currency Pair", y="Total Spread Earned (USD)", markers=True)
+        st.plotly_chart(fig3, use_container_width=True)
 
-    # Heatmap: Currency Pair × Channel
-    st.subheader("Heatmap: Currency Pair × Channel (Transaction Value)")
-    pivot_channel = df.pivot_table(index="Currency Pair", columns="Channel",
-                                   values="Transaction Amount (USD)", aggfunc="sum", fill_value=0)
-    fig_heatmap = px.imshow(pivot_channel, text_auto=True,
-                            labels=dict(x="Channel", y="Currency Pair", color="Value"))
-    st.plotly_chart(fig_heatmap, use_container_width=True)
+    # ----------- Row 2 -----------
+    col_d, col_e, col_f = st.columns(3)
 
-    # Monthly Trends
-    st.subheader("Monthly Transaction Value Trend")
-    df['Month'] = df['Date'].dt.to_period('M').dt.to_timestamp()
-    monthly = df.groupby('Month', as_index=False)['Transaction Amount (USD)'].sum()
-    fig_month = px.line(monthly, x="Month", y="Transaction Amount (USD)", markers=True)
-    st.plotly_chart(fig_month, use_container_width=True)
+    with col_d:
+        st.subheader("Avg. Spread per Transaction (USD) by Segment")
+        fig4 = px.bar(df.groupby("Segment", as_index=False)['Avg. Spread per Transaction (USD)'].mean(),
+                      x="Segment", y="Avg. Spread per Transaction (USD)", text_auto=True)
+        st.plotly_chart(fig4, use_container_width=True)
 
-    # CAC vs Revenue per Segment
-    st.subheader("Customer Acquisition Cost vs Revenue by Segment")
-    cac_rev = df.groupby('Segment', as_index=False).agg(
-        avg_cac=('Customer Acquisition Cost (USD)', 'mean'),
-        total_revenue=('Revenue', 'sum')
-    )
-    fig_cac = px.scatter(cac_rev, x='avg_cac', y='total_revenue', size='total_revenue',
-                         color='Segment', text='Segment',
-                         labels={'avg_cac': 'Avg. CAC (USD)', 'total_revenue': 'Total Revenue (USD)'})
-    st.plotly_chart(fig_cac, use_container_width=True)
+    with col_e:
+        st.subheader("Transaction Value by Segment")
+        fig5 = px.pie(df, names="Segment", values="Transaction Amount (USD)")
+        st.plotly_chart(fig5, use_container_width=True)
+
+    with col_f:
+        st.subheader("Top Currency Pairs by Transaction Value")
+        top_cp = df.groupby("Currency Pair", as_index=False)['Transaction Amount (USD)'].sum().sort_values(
+            by="Transaction Amount (USD)", ascending=False)
+        fig6 = px.bar(top_cp, x="Currency Pair", y="Transaction Amount (USD)", text_auto=True)
+        st.plotly_chart(fig6, use_container_width=True)
 
 else:
     st.info("Please upload a CSV file to see the dashboard.")
