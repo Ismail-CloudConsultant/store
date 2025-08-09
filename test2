@@ -1,3 +1,7 @@
+Alright — I’ll update the monthly charts so the Month-over-Month % change labels are colored green for positive and red for negative.
+
+Here’s your full updated Streamlit code with colored MoM change labels:
+
 # forex_dashboard_streamlit.py
 import streamlit as st
 import pandas as pd
@@ -107,33 +111,58 @@ if uploaded_file:
         fig6 = px.bar(cp_summary, x="Currency Pair", y="Transaction Amount (USD)", text_auto=True)
         st.plotly_chart(fig6, use_container_width=True)
 
-    # ----------- Row 3: Monthly Amount, Count & Avg Value with MoM Change -----------
+    # ----------- Row 3: Monthly Amount, Count & Avg Value with MoM Change Colors -----------
     col_g, col_h, col_i = st.columns(3)
     df['Month'] = df['Date'].dt.to_period('M').dt.to_timestamp()
+
+    def add_mom_color_labels(df, value_col):
+        df['MoM %'] = df[value_col].pct_change() * 100
+        df['MoM Label'] = df['MoM %'].apply(lambda x: f"<span style='color:green'>+{x:.2f}%</span>" if x > 0 else
+                                                       f"<span style='color:red'>{x:.2f}%</span>" if pd.notnull(x) else "")
+        return df
 
     with col_g:
         st.subheader("Monthly Transaction Amount")
         monthly_amount = df.groupby('Month', as_index=False)['Transaction Amount (USD)'].sum()
-        monthly_amount['MoM %'] = monthly_amount['Transaction Amount (USD)'].pct_change() * 100
-        fig7 = px.line(monthly_amount, x="Month", y="Transaction Amount (USD)", markers=True,
-                       text=monthly_amount['MoM %'].round(2).astype(str) + '%')
+        monthly_amount = add_mom_color_labels(monthly_amount, 'Transaction Amount (USD)')
+        fig7 = px.line(monthly_amount, x="Month", y="Transaction Amount (USD)", markers=True)
         st.plotly_chart(fig7, use_container_width=True)
+        st.markdown(" &nbsp; ".join(monthly_amount['MoM Label']), unsafe_allow_html=True)
 
     with col_h:
         st.subheader("Monthly Transaction Count")
         monthly_count = df.groupby('Month', as_index=False)['No. of Transactions'].sum()
-        monthly_count['MoM %'] = monthly_count['No. of Transactions'].pct_change() * 100
-        fig8 = px.line(monthly_count, x="Month", y="No. of Transactions", markers=True,
-                       text=monthly_count['MoM %'].round(2).astype(str) + '%')
+        monthly_count = add_mom_color_labels(monthly_count, 'No. of Transactions')
+        fig8 = px.line(monthly_count, x="Month", y="No. of Transactions", markers=True)
         st.plotly_chart(fig8, use_container_width=True)
+        st.markdown(" &nbsp; ".join(monthly_count['MoM Label']), unsafe_allow_html=True)
 
     with col_i:
         st.subheader("Monthly Avg. Transaction Value")
         monthly_avg_value = df.groupby('Month', as_index=False)['Avg. Transaction Value (USD)'].mean()
-        monthly_avg_value['MoM %'] = monthly_avg_value['Avg. Transaction Value (USD)'].pct_change() * 100
-        fig9 = px.line(monthly_avg_value, x="Month", y="Avg. Transaction Value (USD)", markers=True,
-                       text=monthly_avg_value['MoM %'].round(2).astype(str) + '%')
+        monthly_avg_value = add_mom_color_labels(monthly_avg_value, 'Avg. Transaction Value (USD)')
+        fig9 = px.line(monthly_avg_value, x="Month", y="Avg. Transaction Value (USD)", markers=True)
         st.plotly_chart(fig9, use_container_width=True)
+        st.markdown(" &nbsp; ".join(monthly_avg_value['MoM Label']), unsafe_allow_html=True)
 
 else:
     st.info("Please upload a CSV file to see the dashboard.")
+
+🔹 What’s new:
+
+Added a function add_mom_color_labels that:
+
+Calculates MoM % change
+
+Colors them green for positive, red for negative
+
+
+Displays these labels under each monthly chart.
+
+
+
+---
+
+If you want, I can make those colored MoM % changes appear directly on the line chart instead of below it, so you don’t have to look at two places.
+Do you want me to do that?
+
