@@ -1,15 +1,81 @@
-menu = st.sidebar.radio("Navigation", ["Create", "Update", "Validate", "Visualize"])
+def validate_tab():
+    st.header("Validation Report")
+    if st.session_state.updated_file is None:
+        st.warning("No updated file found. Please run Update first.")
+        return
 
-# Auto navigate if session_state says so
-if "navigate_to" in st.session_state:
-    menu = st.session_state["navigate_to"]
-    del st.session_state["navigate_to"]
+    df_main = st.session_state.main_file
+    df_updated = st.session_state.updated_file
 
-if menu == "Create":
-    create_page()
-elif menu == "Update":
-    update_page()
-elif menu == "Validate":
-    validate_page()
-elif menu == "Visualize":
-    visualize_page()
+    # Ensure indexes match
+    df_main = df_main.reset_index(drop=True)
+    df_updated = df_updated.reset_index(drop=True)
+
+    # Identify changes
+    changes_mask = ~(df_main.eq(df_updated)).all(axis=1)
+    changed_rows = df_updated[changes_mask]
+    total_rows = len(df_main)
+    num_changed_rows = changes_mask.sum()
+
+    # Currency changes
+    if "Currency" in df_main.columns:
+        currency_changes = (df_main["Currency"] != df_updated["Currency"]).sum()
+        changed_currencies = df_updated.loc[df_main["Currency"] != df_updated["Currency"], "Currency"].unique()
+    else:
+        currency_changes = 0
+        changed_currencies = []
+
+    # Segment changes
+    if "Segment" in df_main.columns:
+        segment_changes = df_updated.loc[df_main["Segment"] != df_updated["Segment"], "Segment"].value_counts()
+    else:
+        segment_changes = pd.Series(dtype=int)
+
+    # Tier changes
+    if "Tier" in df_main.columns:
+        tier_changes = df_updated.loc[df_main["Tier"] != df_updated["Tier"], "Tier"].value_counts()
+    else:
+        tier_changes = pd.Series(dtype=int)
+
+    # Metrics summary
+    st.metric("Total Rows", total_rows)
+    st.metric("Rows Changed", num_changed_rows)
+    st.metric("Currency Changes", currency_changes)
+
+    st.subheader("Changed Currencies")
+    st.write(list(changed_currencies))
+
+    st.subheader("New Segments")
+    st.dataframe(segment_changes)
+
+    st.subheader("Changed Tiers")
+    st.dataframe(tier_changes)
+
+    # Visualizations
+    if not segment_changes.empty:
+        fig_seg = px.bar(segment_changes, x=segment_changes.index, y=segment_changes.values, title="Segment Changes")
+        st.plotly_chart(fig_seg)
+
+    if not tier_changes.empty:
+        fig_tier = px.pie(values=tier_changes.values, names=tier_changes.index, title="Tier Changes")
+        st.plotly_chart(fig_tier)
+
+# ---------- VISUALIZE TAB ----------
+def visualize_tab():
+    st.header("Visualize")
+    if st.session_state.updated_file is None:
+        st.warning("No data to visualize.")
+        return
+    st.dataframe(st.session_state.updated_file)
+
+# ---------- TAB NAVIGATION ----------
+tabs = {
+    "Create": create_tab,
+    "Update": update_tab,
+    "Validate": validate_tab,
+    "Visualize": visualize_tab
+}
+
+# Sidebar navigation
+selected_tab = st.sidebar.radio("Navigation", list(tabs.keys()), index=list(tabs.keys()).index(st.session_state.active_tab))
+tabs[selected_tab]()
