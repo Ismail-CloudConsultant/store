@@ -1,22 +1,3 @@
-# streamlit_app.py
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-
-# ---------------- Load Data ----------------
-def load_data(uploaded_file):
-    df = pd.read_csv(uploaded_file, parse_dates=['Date'], dayfirst=False)
-    df.columns = [c.strip() for c in df.columns]  # normalize column names
-
-    # Clean Margin Rate
-    if 'Margin Rate' in df.columns:
-        df['Margin Rate'] = df['Margin Rate'].replace('%', '', regex=True).astype(float) / 100.0
-
-    return df
-
-
-# ---------------- Generate Insights ----------------
 def generate_insights(df):
     amount_col = 'Transaction Amount (USD)'
     txn_col = 'No. of Transactions'
@@ -32,93 +13,78 @@ def generate_insights(df):
 
     st.markdown("---")
 
+    # ---------- First row of charts ----------
+    col1, col2, col3 = st.columns(3)
+
     # Top currency pairs
     cp_summary = df.groupby('Currency Pair').agg(
         total_value=(amount_col, 'sum'),
         total_count=(txn_col, 'sum')
     ).reset_index().sort_values(by='total_value', ascending=False)
-
-    st.subheader("Top Currency Pairs by Value")
-    fig = px.bar(cp_summary.head(10), x='Currency Pair', y='total_value',
-                 title="Top Currency Pairs by Value")
-    st.plotly_chart(fig, use_container_width=True)
+    with col1:
+        st.subheader("Top Currency Pairs by Value")
+        fig1 = px.bar(cp_summary.head(10), x='Currency Pair', y='total_value',
+                      title="Top Currency Pairs by Value")
+        st.plotly_chart(fig1, use_container_width=True)
 
     # Channel Analysis
-    st.subheader("Channel Analysis")
     channel_summary = df.groupby('Channel').agg(
         total_value=(amount_col, 'sum'),
         total_count=(txn_col, 'sum'),
         avg_ticket=(amount_col, 'mean')
     ).reset_index()
-
-    fig = px.bar(channel_summary, x='Channel', y='total_value', title="Transaction Value by Channel")
-    st.plotly_chart(fig, use_container_width=True)
+    with col2:
+        st.subheader("Channel Analysis")
+        fig2 = px.bar(channel_summary, x='Channel', y='total_value', title="Transaction Value by Channel")
+        st.plotly_chart(fig2, use_container_width=True)
 
     # Segment Analysis
-    st.subheader("Segment Analysis")
     segment_summary = df.groupby('Segment').agg(
         total_value=(amount_col, 'sum'),
         total_count=(txn_col, 'sum'),
         avg_ticket=(amount_col, 'mean')
     ).reset_index()
+    with col3:
+        st.subheader("Segment Analysis")
+        fig3 = px.pie(segment_summary, names='Segment', values='total_value',
+                      title='Transaction Value by Segment')
+        st.plotly_chart(fig3, use_container_width=True)
 
-    fig = px.pie(segment_summary, names='Segment', values='total_value', title='Transaction Value by Segment')
-    st.plotly_chart(fig, use_container_width=True)
+    # ---------- Second row of charts ----------
+    col4, col5, col6 = st.columns(3)
 
-    # Profitability by Currency Pair
+    # Revenue by Currency Pair
     if 'Margin Rate' in df.columns:
         df['Revenue'] = df[amount_col] * df['Margin Rate']
         margin_cp = df.groupby('Currency Pair').agg(
             avg_margin=('Margin Rate', 'mean'),
             total_revenue=('Revenue', 'sum')
         ).reset_index().sort_values(by='total_revenue', ascending=False)
+        with col4:
+            st.subheader("Revenue by Currency Pair")
+            fig4 = px.bar(margin_cp, x='Currency Pair', y='total_revenue',
+                          title="Total Revenue by Currency Pair")
+            st.plotly_chart(fig4, use_container_width=True)
 
-        st.subheader("Revenue by Currency Pair")
-        fig = px.bar(margin_cp, x='Currency Pair', y='total_revenue',
-                     title="Total Revenue by Currency Pair")
-        st.plotly_chart(fig, use_container_width=True)
-
-    # Monthly trends
-    st.subheader("Monthly Transaction Trends")
+    # Monthly Transaction Trends
     df['Month'] = df['Date'].dt.to_period('M').dt.to_timestamp()
     monthly = df.groupby('Month').agg(
         total_value=(amount_col, 'sum'),
         total_count=(txn_col, 'sum')
     ).reset_index()
+    with col5:
+        st.subheader("Monthly Transaction Trends")
+        fig5 = px.line(monthly, x='Month', y='total_value', markers=True,
+                       title="Monthly Transaction Value Trend")
+        st.plotly_chart(fig5, use_container_width=True)
 
-    fig = px.line(monthly, x='Month', y='total_value', markers=True, title="Monthly Transaction Value Trend")
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Heatmaps
-    st.subheader("Currency Pair × Channel Heatmap")
+    # Currency Pair × Channel Heatmap
     if 'Channel' in df.columns:
         pivot_channel = df.pivot_table(index='Currency Pair', columns='Channel',
                                        values=amount_col, aggfunc='sum', fill_value=0)
-        fig = px.imshow(pivot_channel,
-                        title='Transaction Value by Currency Pair and Channel',
-                        labels=dict(x="Channel", y="Currency Pair", color="Value"))
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.subheader("Currency Pair × Segment Heatmap")
-    if 'Segment' in df.columns:
-        pivot_segment = df.pivot_table(index='Currency Pair', columns='Segment',
-                                       values=amount_col, aggfunc='sum', fill_value=0)
-        fig = px.imshow(pivot_segment,
-                        title='Transaction Value by Currency Pair and Segment',
-                        labels=dict(x="Segment", y="Currency Pair", color="Value"))
-        st.plotly_chart(fig, use_container_width=True)
-
-
-# ---------------- Streamlit UI ----------------
-st.set_page_config(page_title="Forex Transactions Dashboard", layout="wide")
-st.title("💱 Forex Transactions Dashboard")
-
-uploaded_file = st.file_uploader("Upload your Forex Transactions CSV", type=['csv'])
-
-if uploaded_file is not None:
-    df = load_data(uploaded_file)
-    st.write("### Preview of Data", df.head())
-    generate_insights(df)
-else:
-    st.info("Please upload a CSV file to see the dashboard.")
-
+        with col6:
+            st.subheader("Currency Pair × Channel Heatmap")
+            fig6 = px.imshow(pivot_channel,
+                             title='Transaction Value by Currency Pair and Channel',
+                             labels=dict(x="Channel", y="Currency Pair", color="Value"))
+            st.plotly_chart(fig6, use_container_width=True)
