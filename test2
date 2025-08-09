@@ -1,303 +1,124 @@
-# forex_kpis.py
-import argparse
-import os
-from pathlib import Path
-
+# forex_dashboard_insights.py
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
+import os
+from pathlib import Path
 
-
-def load_data(path):
-    df = pd.read_csv(path, parse_dates=['Date'], dayfirst=False, infer_datetime_format=True)
-    # normalize column names
-    df.columns = [c.strip() for c in df.columns]
+# ---------------- Load Data ----------------
+def load_data(csv_path):
+    df = pd.read_csv(csv_path, parse_dates=['Date'], dayfirst=False)
+    df.columns = [c.strip() for c in df.columns]  # normalize col names
+    
+    # Clean Margin Rate: convert % strings to float fractions
+    if 'Margin Rate' in df.columns:
+        df['Margin Rate'] = df['Margin Rate'].replace('%', '', regex=True).astype(float) / 100.0
+    
     return df
 
+# ---------------- Insights ----------------
+def generate_insights(df, outdir="outputs_dashboard"):
+    Path(outdir).mkdir(exist_ok=True, parents=True)
+    
+    amount_col = 'Transaction Amount (USD)'
+    txn_col = 'No. of Transactions'
+    
+    insights = {}
 
-# ---------- Basic transactional KPIs ----------
-def basic_kpis(df):
-    kpis = {}
-    kpis['total_transactions_rows'] = len(df)
-    # If dataset has a per-transaction row, count rows; if it has aggregated "No. of Transactions", sum that
-    if 'No. of Transactions' in df.columns:
-        kpis['total_transaction_count'] = int(df['No. of Transactions'].sum())
-    else:
-        kpis['total_transaction_count'] = int(len(df))
+    # 1️⃣ OVERALL KPIs
+    insights['total_value'] = df[amount_col].sum()
+    insights['total_count'] = df[txn_col].sum()
+    insights['avg_txn_size'] = insights['total_value'] / insights['total_count']
+    
+    # Save KPI summary
+    kpi_df = pd.DataFrame({
+        'Metric': ['Total Transaction Value', 'Total Transactions', 'Average Transaction Size'],
+        'Value': [insights['total_value'], insights['total_count'], insights['avg_txn_size']]
+    })
+    kpi_df.to_csv(f"{outdir}/kpi_summary.csv", index=False)
 
-    # Total amount
-    amount_col = find_amount_col(df)
-    if amount_col:
-        kpis['total_transaction_amount'] = float(df[amount_col].sum())
-        kpis['average_txn_size'] = float(df[amount_col].sum() / max(1, kpis['total_transaction_count']))
-    else:
-        kpis['total_transaction_amount'] = np.nan
-        kpis['average_txn_size'] = np.nan
+    # 2️⃣ TOP currency pairs by value & count
+    cp_summary = df.groupby('Currency Pair').agg(
+        total_value=(amount_col, 'sum'),
+        total_count=(txn_col, 'sum')
+    ).reset_index().sort_values(by='total_value', ascending=False)
+    cp_summary.to_csv(f"{outdir}/currency_pair_summary.csv", index=False)
 
-    # Unique currency pairs
-    if 'Currency Pair' in df.columns:
-        kpis['unique_currency_pairs'] = int(df['Currency Pair'].nunique())
-    else:
-        kpis['unique_currency_pairs'] = 0
+    fig = px.bar(cp_summary.head(10), x='Currency Pair', y='total_value',
+                 title="Top Currency Pairs by Value")
+    fig.write_html(f"{outdir}/top_currency_pairs.html")
 
-    # Buy vs Sell ratio (optional: col 'Side' or 'Buy/Sell')
-    side_cols = [c for c in df.columns if c.lower() in ('side', 'buy/sell', 'buy_sell', 'txn_side')]
-    if side_cols:
-        s = side_cols[0]
-        buys = (df[s].str.lower().isin(['buy', 'b']) ).sum()
-        sells = (df[s].str.lower().isin(['sell', 's']) ).sum()
-        kpis['buy_count'] = int(buys)
-        kpis['sell_count'] = int(sells)
-        kpis['buy_sell_ratio'] = (buys / max(1, sells)) if sells > 0 else np.inf
-    else:
-        kpis['buy_count'] = None
-        kpis['sell_count'] = None
-        kpis['buy_sell_ratio'] = None
+    # 3️⃣ Channel Analysis
+    channel_summary = df.groupby('Channel').agg(
+        total_value=(amount_col, 'sum'),
+        total_count=(txn_col, 'sum'),
+        avg_ticket=(amount_col, 'mean')
+    ).reset_index()
+    channel_summary.to_csv(f"{outdir}/channel_summary.csv", index=False)
 
-    return kpis
+    fig = px.bar(channel_summary, x='Channel', y='total_value',
+                 title="Transaction Value by Channel")
+    fig.write_html(f"{outdir}/channel_analysis.html")
 
+    # 4️⃣ Segment Performance
+    segment_summary = df.groupby('Segment').agg(
+        total_value=(amount_col, 'sum'),
+        total_count=(txn_col, 'sum'),
+        avg_ticket=(amount_col, 'mean')
+    ).reset_index()
+    segment_summary.to_csv(f"{outdir}/segment_summary.csv", index=False)
 
-def find_amount_col(df):
-    # heuristics to find amount column
-    candidates = [c for c in df.columns if 'amount' in c.lower()]
-    if candidates:
-        return candidates[0]
-    # fallback to common names
-    for name in ['Transaction Amount (USD)', 'Amount', 'Txn Amount', 'Value']:
-        if name in df.columns:
-            return name
-    return None
+    fig = px.pie(segment_summary, names='Segment', values='total_value',
+                 title='Transaction Value by Segment')
+    fig.write_html(f"{outdir}/segment_analysis.html")
 
+    # 5️⃣ Profitability by Currency Pair
+    if 'Margin Rate' in df.columns:
+        df['Revenue'] = df[amount_col] * df['Margin Rate']
+        margin_cp = df.groupby('Currency Pair').agg(
+            avg_margin=('Margin Rate', 'mean'),
+            total_revenue=('Revenue', 'sum')
+        ).reset_index().sort_values(by='total_revenue', ascending=False)
+        margin_cp.to_csv(f"{outdir}/margin_by_currency_pair.csv", index=False)
 
-# ---------- Dimensional breakdowns ----------
-def dimensional_breakdowns(df, outdir):
-    amount_col = find_amount_col(df)
-    results = {}
+        fig = px.bar(margin_cp, x='Currency Pair', y='total_revenue',
+                     title="Revenue by Currency Pair")
+        fig.write_html(f"{outdir}/revenue_by_currency_pair.html")
 
-    # By currency pair
-    if 'Currency Pair' in df.columns:
-        gp = df.groupby('Currency Pair').agg(
-            transaction_count=('No. of Transactions' if 'No. of Transactions' in df.columns else df.index.name, 'count'),
-            transaction_amount=(amount_col, 'sum') if amount_col else (amount_col, lambda x: np.nan)
-        ).reset_index()
-        results['by_currency_pair'] = gp.sort_values(by='transaction_amount', ascending=False)
-        # chart
-        if amount_col:
-            fig = px.bar(gp.sort_values('transaction_amount', ascending=False),
-                         x='Currency Pair', y='transaction_amount',
-                         title='Total Transaction Amount by Currency Pair',
-                         labels={'transaction_amount': 'Transaction Amount (USD)'} )
-            fig.write_html(os.path.join(outdir, 'tx_amount_by_currency_pair.html'))
+    # 6️⃣ Monthly Trends
+    df['Month'] = df['Date'].dt.to_period('M').dt.to_timestamp()
+    monthly = df.groupby('Month').agg(
+        total_value=(amount_col, 'sum'),
+        total_count=(txn_col, 'sum')
+    ).reset_index()
+    monthly.to_csv(f"{outdir}/monthly_summary.csv", index=False)
 
-    # By product
-    if 'Product' in df.columns:
-        gp = df.groupby('Product').agg(
-            transaction_count=('No. of Transactions' if 'No. of Transactions' in df.columns else 'Date', 'count'),
-            transaction_amount=(amount_col, 'sum') if amount_col else (amount_col, lambda x: np.nan)
-        ).reset_index()
-        results['by_product'] = gp.sort_values(by='transaction_count', ascending=False)
-        if amount_col:
-            fig = px.pie(gp, names='Product', values='transaction_amount', title='Transaction Amount by Product')
-            fig.write_html(os.path.join(outdir, 'tx_amount_by_product.html'))
+    fig = px.line(monthly, x='Month', y='total_value', markers=True,
+                  title="Monthly Transaction Value Trend")
+    fig.write_html(f"{outdir}/monthly_trend.html")
 
-    # By channel
+    # 7️⃣ Heatmaps
     if 'Channel' in df.columns:
-        gp = df.groupby('Channel').agg(
-            transaction_count=('No. of Transactions' if 'No. of Transactions' in df.columns else 'Date', 'count'),
-            transaction_amount=(amount_col, 'sum') if amount_col else (amount_col, lambda x: np.nan)
-        ).reset_index()
-        results['by_channel'] = gp.sort_values(by='transaction_count', ascending=False)
-        if amount_col:
-            fig = px.bar(gp, x='Channel', y='transaction_amount', title='Transaction Amount by Channel')
-            fig.write_html(os.path.join(outdir, 'tx_amount_by_channel.html'))
+        pivot_channel = df.pivot_table(index='Currency Pair', columns='Channel',
+                                       values=amount_col, aggfunc='sum', fill_value=0)
+        fig = px.imshow(pivot_channel,
+                        title='Currency Pair × Channel (Transaction Value)',
+                        labels=dict(x="Channel", y="Currency Pair", color="Value"))
+        fig.write_html(f"{outdir}/heatmap_currency_channel.html")
 
-    # By segment / tier
-    seg_col = 'Segment' if 'Segment' in df.columns else ('Tier Group' if 'Tier Group' in df.columns else None)
-    if seg_col:
-        gp = df.groupby(seg_col).agg(
-            transaction_count=('No. of Transactions' if 'No. of Transactions' in df.columns else 'Date', 'count'),
-            transaction_amount=(amount_col, 'sum') if amount_col else (amount_col, lambda x: np.nan)
-        ).reset_index()
-        results['by_segment'] = gp.sort_values(by='transaction_amount', ascending=False)
-        if amount_col:
-            fig = px.bar(gp, x=seg_col, y='transaction_amount', title='Transaction Amount by Segment')
-            fig.write_html(os.path.join(outdir, 'tx_amount_by_segment.html'))
+    if 'Segment' in df.columns:
+        pivot_segment = df.pivot_table(index='Currency Pair', columns='Segment',
+                                       values=amount_col, aggfunc='sum', fill_value=0)
+        fig = px.imshow(pivot_segment,
+                        title='Currency Pair × Segment (Transaction Value)',
+                        labels=dict(x="Segment", y="Currency Pair", color="Value"))
+        fig.write_html(f"{outdir}/heatmap_currency_segment.html")
+    
+    print(f"Insights and charts saved in: {outdir}")
 
-    # Heatmap: Currency Pair x Channel
-    if 'Currency Pair' in df.columns and 'Channel' in df.columns and amount_col:
-        pivot = df.pivot_table(index='Currency Pair', columns='Channel', values=amount_col, aggfunc='sum', fill_value=0)
-        pivot = pivot.sort_values(by=pivot.columns[0], ascending=False)
-        fig = px.imshow(pivot, aspect="auto", title='Heatmap: Transaction Amount (Currency Pair x Channel)', labels=dict(x="Channel", y="Currency Pair", color="Amount"))
-        fig.write_html(os.path.join(outdir, 'heatmap_currency_channel.html'))
-        results['heatmap_currency_channel'] = pivot
-
-    # Heatmap: Currency Pair x Segment
-    if 'Currency Pair' in df.columns and seg_col and amount_col:
-        pivot = df.pivot_table(index='Currency Pair', columns=seg_col, values=amount_col, aggfunc='sum', fill_value=0)
-        fig = px.imshow(pivot, aspect="auto", title='Heatmap: Transaction Amount (Currency Pair x Segment)', labels=dict(x=seg_col, y="Currency Pair", color="Amount"))
-        fig.write_html(os.path.join(outdir, 'heatmap_currency_segment.html'))
-        results['heatmap_currency_segment'] = pivot
-
-    # save tables
-    for k, table in results.items():
-        if isinstance(table, pd.DataFrame):
-            table.to_csv(os.path.join(outdir, f'{k}.csv'), index=False)
-
-    return results
-
-
-# ---------- Profitability & Margin KPIs ----------
-def profitability_kpis(df, outdir):
-    results = {}
-    amount_col = find_amount_col(df)
-
-    # If margin rate available as column 'Margin Rate' e.g. '0.95%' or numeric
-    if 'Margin Rate' in df.columns or 'Margin' in df.columns or 'Margin Rate (%)' in df.columns:
-        # normalize margin to decimal percent
-        mcol = 'Margin Rate' if 'Margin Rate' in df.columns else ('Margin Rate (%)' if 'Margin Rate (%)' in df.columns else 'Margin')
-        def parse_margin(x):
-            if pd.isna(x):
-                return np.nan
-            if isinstance(x, str) and '%' in x:
-                return float(x.replace('%',''))/100.0
-            try:
-                val = float(x)
-                # if >1 it's likely percent like 0.95 -> 0.95%? assume user provided percent like 0.95 -> 0.95
-                # We assume margin given is percent in % form or numeric percent, keep as fraction
-                if val > 1:
-                    return val/100.0
-                return val
-            except Exception:
-                return np.nan
-        df['_margin_frac'] = df[mcol].map(parse_margin)
-
-        # Average spread per currency pair
-        if 'Currency Pair' in df.columns and amount_col:
-            gp = df.groupby('Currency Pair').apply(lambda x: pd.Series({
-                'avg_margin_pct': x['_margin_frac'].mean()*100,
-                'total_spread_revenue': (x[amount_col] * x['_margin_frac']).sum()
-            }))
-            gp = gp.reset_index()
-            results['margin_by_currency_pair'] = gp.sort_values('total_spread_revenue', ascending=False)
-            fig = px.bar(gp, x='Currency Pair', y='total_spread_revenue', title='Total Spread Revenue by Currency Pair')
-            fig.write_html(os.path.join(outdir, 'spread_revenue_by_currency_pair.html'))
-
-        # Fee income by channel
-        if 'Channel' in df.columns and amount_col:
-            gp = df.groupby('Channel').apply(lambda x: (x[amount_col] * x['_margin_frac']).sum()).reset_index().rename(columns={0: 'fee_income'})
-            results['fee_income_by_channel'] = gp
-            fig = px.bar(gp, x='Channel', y='fee_income', title='Fee / Spread Income by Channel')
-            fig.write_html(os.path.join(outdir, 'fee_income_by_channel.html'))
-
-        # net revenue per product
-        if 'Product' in df.columns and amount_col:
-            gp = df.groupby('Product').apply(lambda x: (x[amount_col] * x['_margin_frac']).sum()).reset_index().rename(columns={0: 'net_revenue'})
-            results['net_revenue_by_product'] = gp
-            fig = px.bar(gp, x='Product', y='net_revenue', title='Net Revenue by Product')
-            fig.write_html(os.path.join(outdir, 'net_revenue_by_product.html'))
-
-        # cleanup
-        df.drop(columns=['_margin_frac'], inplace=True, errors='ignore')
-
-    else:
-        results['margin_by_currency_pair'] = None
-
-    # total spread revenue overall
-    if amount_col:
-        if 'Margin Rate' in df.columns:
-            # parse margin and calculate
-            # if margin col exists we calculated above into results
-            pass
-    return results
-
-
-# ---------- Time series KPIs ----------
-def timeseries_kpis(df, outdir):
-    amount_col = find_amount_col(df)
-    results = {}
-
-    if 'Date' not in df.columns:
-        return results
-
-    # ensure datetime
-    df['Date'] = pd.to_datetime(df['Date'])
-    df['month'] = df['Date'].dt.to_period('M').dt.to_timestamp()
-
-    # monthly volumes
-    if amount_col:
-        monthly = df.groupby('month').agg(
-            transactions_count=('No. of Transactions' if 'No. of Transactions' in df.columns else 'Date', 'count'),
-            transaction_amount=(amount_col, 'sum')
-        ).reset_index()
-        results['monthly'] = monthly
-        fig = px.line(monthly, x='month', y='transaction_amount', title='Monthly Transaction Amount', markers=True)
-        fig.write_html(os.path.join(outdir, 'monthly_transaction_amount.html'))
-
-    # channel trend over time
-    if 'Channel' in df.columns and amount_col:
-        channel_ts = df.groupby(['month', 'Channel']).agg(transaction_amount=(amount_col, 'sum')).reset_index()
-        fig = px.line(channel_ts, x='month', y='transaction_amount', color='Channel', title='Channel Transaction Amount Over Time')
-        fig.write_html(os.path.join(outdir, 'channel_trend_over_time.html'))
-        results['channel_ts'] = channel_ts
-
-    # currency pair seasonality
-    if 'Currency Pair' in df.columns and amount_col:
-        cp_ts = df.groupby(['month', 'Currency Pair']).agg(transaction_amount=(amount_col, 'sum')).reset_index()
-        # you can plot a small-multiples line chart for top N currency pairs
-        top_pairs = cp_ts.groupby('Currency Pair')['transaction_amount'].sum().nlargest(6).index.tolist()
-        cp_top = cp_ts[cp_ts['Currency Pair'].isin(top_pairs)]
-        fig = px.line(cp_top, x='month', y='transaction_amount', color='Currency Pair', title='Top currency pairs - monthly amount')
-        fig.write_html(os.path.join(outdir, 'top_pairs_monthly.html'))
-        results['cp_ts'] = cp_ts
-
-    return results
-
-
-# ---------- Utility to save summary tables ----------
-def save_summary_tables(outdir, results):
-    for k, v in results.items():
-        if isinstance(v, pd.DataFrame):
-            v.to_csv(os.path.join(outdir, f'{k}.csv'), index=False)
-
-
-def ensure_outdir(outdir):
-    Path(outdir).mkdir(parents=True, exist_ok=True)
-
-
-# ---------- Main runner ----------
-def run(input_csv, outdir):
-    ensure_outdir(outdir)
-    df = load_data(input_csv)
-
-    print("Loaded:", len(df), "rows")
-    # Basic KPIs
-    kpis = basic_kpis(df)
-    print("\n--- Basic KPIs ---")
-    for k, v in kpis.items():
-        print(f"{k}: {v}")
-
-    # Dimensional
-    print("\nComputing dimensional breakdowns ...")
-    dim_res = dimensional_breakdowns(df, outdir)
-    save_summary_tables(outdir, dim_res)
-
-    # Profitability
-    print("\nComputing profitability KPIs ...")
-    prof_res = profitability_kpis(df, outdir)
-    save_summary_tables(outdir, prof_res)
-
-    # Time series
-    print("\nComputing time-series KPIs ...")
-    ts_res = timeseries_kpis(df, outdir)
-    save_summary_tables(outdir, ts_res)
-
-    print(f"\nAll outputs (charts + CSV summaries) written to: {outdir}")
-
-
+# ---------------- Run Example ----------------
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Forex KPI generator")
-    parser.add_argument("--input", "-i", help="Input CSV path", required=True)
-    parser.add_argument("--outdir", "-o", help="Output directory", default="outputs")
-    args = parser.parse_args()
-    run(args.input, args.outdir)
+    # Replace with your CSV file path
+    csv_path = "forex_transactions_sample.csv"
+    df = load_data(csv_path)
+    generate_insights(df)
