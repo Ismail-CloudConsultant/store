@@ -1,4 +1,15 @@
-st.session_state["main_file"] = main_df.copy()  # original before update
-st.session_state["updated_file"] = updated_df.copy()  # after update
-st.session_state["navigate_to"] = "Validate"
-st.rerun()
+menu = st.sidebar.radio("Navigation", ["Create", "Update", "Validate", "Visualize"])
+
+# Auto navigate if session_state says so
+if "navigate_to" in st.session_state:
+    menu = st.session_state["navigate_to"]
+    del st.session_state["navigate_to"]
+
+if menu == "Create":
+    create_page()
+elif menu == "Update":
+    update_page()
+elif menu == "Validate":
+    validate_page()
+elif menu == "Visualize":
+    visualize_page()
