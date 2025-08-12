@@ -1,0 +1,97 @@
+Slide 1 – Title
+PCD Enhancements, Strategic Solutions & Transformation
+Subtitle: Automating Margin Creation & Updates for Efficiency
+
+Slide 2 – Agenda
+PCD enhancements and new functionalities
+
+Strategic solutions built on top of PCD
+
+Transforming the existing PCD
+
+Slide 3 – Recap of Previous Solution
+Earlier solution: Built on PCD to create & update margins
+
+Today: Quick recap before exploring improvements
+
+Slide 4 – Current Workflow Overview
+When Operations receives a market request to revise/create margins:
+
+Request verified by Governance team
+
+Two types of tasks:
+
+Creating margins (Scenario 1)
+
+Updating margins (Scenario 2)
+
+Slide 5 – Scenario 1: Creating Margins (Current Process)
+Request via email with currencies, tiers, and segments
+
+Mapping file prepared as base template
+
+Manual entry for each currency pair, row-by-row
+
+Time: ~2 min per currency → ~20 min for 20 pairs + re-checking
+
+Drawbacks: Repetitive, prone to human error, multiple validation layers needed
+
+Slide 6 – Scenario 1: Our Solution – PCD Create Module
+Same mapping file → upload to tool instead of manual entry
+
+Automation speed: 20 currencies × 5 combinations in ~20 seconds
+
+With validations, total process: 10–15 min (vs 2 hrs)
+
+Impact: Huge time savings + reduced errors
+
+Slide 7 – Scenario 2: Updating Margins (Current Process)
+Triggered for campaigns/offers with discounted margins
+
+Ops team downloads PCD file, compares with request, updates row-by-row
+
+Example: 20% margin decrease → 2 min per combination
+
+Time: > 2 hrs for multiple currency pairs
+
+Drawbacks: Manual, error-prone, slow
+
+Slide 8 – Scenario 2: Our Solution – PCD Update Module
+Update methods available:
+
+Replace with new margins
+
+Increase/decrease by %
+
+Increase/decrease by bid points
+
+Process flow: Upload file → choose update method → soft validation summary report
+
+Optional hard validation: OCR to compare request form vs. output before download
+
+Slide 9 – Impact Summary
+Before:
+
+Manual process taking ~2 hrs
+
+Multiple checks for error control
+
+High likelihood of mistakes
+
+After PCD Solution:
+
+Task time cut from ~2 hrs to 10–15 min
+
+Automation + validations = reduced errors
+
+Scalable for multiple currencies & combinations instantly
+
+Slide 10 – Closing
+PCD enhancements significantly improve speed, accuracy, and scalability
+
+Both creation and update workflows are now leaner & more reliable
+
+Opens scope for further automation and integration
+
+If you want, I can also add visuals/flowcharts for each scenario so it’s not text-heavy.
+Do you want me to create a visually designed PPT layout with charts and process diagrams so that it’s ready for presentation? That would make your deck highly engaging for stakeholders.
