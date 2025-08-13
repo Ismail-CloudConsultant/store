@@ -1,4 +1,7 @@
 {
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "C:/Users/YourName/pyenv/Lib/site-packages"
+    },
     "terminal.integrated.profiles.windows": {
         "PythonEnv": {
             "path": "C:/Users/YourName/pyenv/Scripts/python.exe"
