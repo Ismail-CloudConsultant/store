@@ -1,11 +1,9 @@
-{
-    "terminal.integrated.env.windows": {
-        "PYTHONPATH": "C:/Users/YourName/pyenv/Lib/site-packages"
-    },
-    "terminal.integrated.profiles.windows": {
-        "PythonEnv": {
-            "path": "C:/Users/YourName/pyenv/Scripts/python.exe"
-        }
-    },
-    "terminal.integrated.defaultProfile.windows": "PythonEnv"
-}
+st.markdown(
+    "<span style='color:blue; font-size:30px;'>This is large blue text</span>", 
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    "<span style='color:#ff5733; font-size:28px;'>This is large orange text</span>", 
+    unsafe_allow_html=True
+)
