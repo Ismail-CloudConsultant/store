@@ -1,74 +1,41 @@
-Got it — you want to keep the same sequence of speech as your original text, just make it more polished and ready to present to stakeholders, without rearranging the order.
+import pandas as pd
 
-Here’s your stakeholder-ready rephrased version, preserving the exact sequence you had:
+# Original dataframe
+df = pd.DataFrame({
+    'Product': ['MCA', 'MCA'],
+    'Channel': ['OHB', 'OHB'],
+    'Send Currency': ['AUD', 'AUD'],
+    'Receive Currency': ['SGD', 'SGD'],
+    'Customer Segment Type': [1, 1],
+    'Tier Min Txn Amount': [0, 0],
+    'Tier Max Txn Amount': [14000, 14000],
+    'Start date': ['2/1/2023', '6/1/2025'],
+    'End date': ['6/1/2025', '12/1/2999'],
+    'Core Margin Value': [1.8, 5.8]
+})
 
-Let me start by giving you a brief overview of the agenda and the points we’ll be discussing in this call:
+# Reset index for ordering
+df = df.reset_index()
 
-PCD enhancements and new functionalities
+# Add a sequence number for each row within the same group
+df['period_num'] = df.groupby([
+    'Product', 'Channel', 'Send Currency', 'Receive Currency', 
+    'Customer Segment Type', 'Tier Min Txn Amount', 'Tier Max Txn Amount'
+]).cumcount() + 1
 
-Strategic solutions built on top of PCD
+# Pivot the data
+df_pivot = df.pivot_table(
+    index=['Product', 'Channel', 'Send Currency', 'Receive Currency', 
+           'Customer Segment Type', 'Tier Min Txn Amount', 'Tier Max Txn Amount'],
+    columns='period_num',
+    values=['Start date', 'End date', 'Core Margin Value'],
+    aggfunc='first'
+)
 
-Transforming the existing PCD
+# Flatten column names
+df_pivot.columns = [f"{col[0].replace('Core Margin Value','Value')}{col[1]}" for col in df_pivot.columns]
 
-Although you may already be aware of the previous solution we built on top of PCD for creating and updating margins, I’ll quickly walk you through it again.
+# Reset index to get final table
+df_final = df_pivot.reset_index()
 
-Scenario 1: Creating Margins
-
-When the Operations team receives a request from the market to revise existing margins or create new ones, they first confirm the request with the Governance team before starting work.
-
-For creating margins:
-
-The request comes via email, specifying the currencies, tiers, and segments in scope.
-
-The team prepares a mapping file as the starting point.
-
-Then, they manually create entries for each currency pair, row by row.
-
-It takes around 2 minutes to create a single currency entry. For 20 currency pairs, that’s about 20 minutes, followed by re-checking for errors. This process is highly manual, repetitive, and prone to human error, which is why multiple layers of validation are required.
-
-Our solution: The PCD Create Module
-
-Uses the same mapping file, but instead of manual entry, the file is uploaded into the tool.
-
-It can create margins for 20 currencies with 5 different combinations in about 20 seconds.
-
-Even with multiple validation layers, the total process now takes just 10–15 minutes versus the earlier 2 hours of manual work.
-
-Scenario 2: Updating Margins
-
-A similar type of request is received for updating margins on the existing PCD file — for example, during market campaigns offering discounted margins.
-
-In the current manual process:
-
-The Operations team downloads the existing PCD file from the server.
-
-They place the change request alongside it and update the entries row by row.
-
-If we try decreasing a margin by 20% manually, it takes around 2 minutes per combination. For multiple currency pairs, this can mean over 2 hours of work.
-
-Our solution in the PCD tool:
-
-Three update options are available:
-
-Replace with new margins
-
-Incremental changes by percentage
-
-Incremental changes by bid points
-
-After upload, the tool presents a Validation Summary Report (soft validation).
-
-We can also add hard validation using OCR — the request form is uploaded, scanned, and the tool automatically matches it against the changes to ensure accuracy before download.
-
-Impact:
-
-Manual effort reduced from ~2 hours to 10–15 minutes
-
-Reduced risk of human error with automated validations
-
-Higher efficiency with instant processing for multiple currencies and combinations
-
-If you like, I can refine this further into a spoken-style script so it flows naturally when you present it in the meeting.
-
-Do you want me to convert this into a ready-to-read presentation script? That way you can just deliver it as is.
-
+print(df_final)
