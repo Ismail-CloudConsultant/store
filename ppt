@@ -1,18 +1,36 @@
-21.5	39.0	39.5	43,323,650	78,587,081	79,594,608
-M2	200,159,240	23.6	38.7	37.6	47,237,580	77,461,626	75,259,874
-M3	220,803,911	24.7	37.7	37.6	54,538,570	83,243,074	83,022,271
-M4	213,899,807	25.8	36.7	37.5	55,186,150	78,501,229	80,212,428
-M5	199,414,143	26.8	36.4	36.7	53,442,990	72,586,748	73,184,990
-M6	197,893,704	28.6	35.7	35.7	56,597,600	70,648,052	70,648,052
-M7	239,185,897	30.1	35.5	34.4	71,994,960	84,910,993	82,279,949
-M8	223,012,684	31.1	34.7	34.2	69,356,940	77,385,401	76,270,338
-M9	202,118,803	32.1	33.5	34.5	64,880,140	67,709,799	69,730,987
-M10	214,139,031	33.7	32.6	33.8	72,164,850	69,809,324	72,378,992
-M11	221,966,124	35.0	32.6	32.3	77,688,140	72,360,956	71,695,058
-M12	212,911,157	36.6	32.0	31.5	77,925,480	68,131,570	67,067,014
-M13	267,476,912	37.1	31.4	31.5	99,233,930	83,987,750	84,255,227
-M14	224,917,391	39.0	30.6	30.5	87,717,780	68,824,722	68,599,804
-M15	254,161,124	40.2	30.3	29.5	102,172,800	77,010,821	74,977,532
-M16	334,408,925	41.5	29.7	28.8	138,779,700	99,319,451	96,309,770
-M17	261,258,603	43.2	28.5	28.3	112,863,700	74,458,702	73,936,185
-M18	251,095,972	44.8	27.8	27.4	112,491,000	69,804,680	68,800,296
+import pandas as pd
+
+# Sample data
+data = {
+    "MONTH": [202401,202401,202401,202401,202401,202401,202401,202401,202401,202401,202401],
+    "CUSTOMER_TYPE": ["ETB","ETB","ETB","ETB","NTB","ETB","ETB","ETB","ETB","NTB","NTB"],
+    "Proposition": ["Non-Premier","Non-Premier","Non-Premier","Non-Premier","Non-Premier",
+                    "Premier","Premier","Premier","Premier","Premier","Premier"],
+    "Channels": ["Branch","Branch","Digital","Digital","Digital","Branch","Branch","Digital","Digital","Digital","Digital"],
+    "PRODUCT_TYPE": ["ETP","NTP","ETP","NTP","NTP","ETP","NTP","ETP","NTP","NTP","NTP"],
+    "VOLUME": [8,9.5,936,342.5,8,154.5,206,15898.5,8202.5,151,151],
+    "VALUE": [148567.66,139295.01,2195614.234,1506580.185,307.36,
+              23844175.94,22453649.45,77354338.88,72780000.62,1082807.18,1082807.18],
+    "Increase%": [0.04,0.03,0.55,0.38,0.0,0.12,0.11,0.39,0.37,0.01,0.01] # manually set %
+}
+
+df = pd.DataFrame(data)
+
+# Step 1: Sum of month
+df["sum_of_month"] = df.groupby("MONTH")["VALUE"].transform("sum")
+
+# Step 2: Sum of month-proposition
+df["sum_of_month_proposition"] = df.groupby(["MONTH","Proposition"])["VALUE"].transform("sum")
+
+# Step 3: Value/month-proposition
+df["Value_month_proposition"] = df["VALUE"] / df["sum_of_month_proposition"]
+
+# Step 4: sum_of_month * Increase%
+df["sum_month_Increase"] = df["sum_of_month"] * df["Increase%"]
+
+# Step 5: Final calculation
+df["Final_Result"] = df["Value_month_proposition"] * df["sum_month_Increase"]
+
+# Display result
+pd.set_option("display.float_format", "{:,.2f}".format)
+print(df)
