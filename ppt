@@ -1,36 +1,5 @@
-import pandas as pd
-
-# Sample data
-data = {
-    "MONTH": [202401,202401,202401,202401,202401,202401,202401,202401,202401,202401,202401],
-    "CUSTOMER_TYPE": ["ETB","ETB","ETB","ETB","NTB","ETB","ETB","ETB","ETB","NTB","NTB"],
-    "Proposition": ["Non-Premier","Non-Premier","Non-Premier","Non-Premier","Non-Premier",
-                    "Premier","Premier","Premier","Premier","Premier","Premier"],
-    "Channels": ["Branch","Branch","Digital","Digital","Digital","Branch","Branch","Digital","Digital","Digital","Digital"],
-    "PRODUCT_TYPE": ["ETP","NTP","ETP","NTP","NTP","ETP","NTP","ETP","NTP","NTP","NTP"],
-    "VOLUME": [8,9.5,936,342.5,8,154.5,206,15898.5,8202.5,151,151],
-    "VALUE": [148567.66,139295.01,2195614.234,1506580.185,307.36,
-              23844175.94,22453649.45,77354338.88,72780000.62,1082807.18,1082807.18],
-    "Increase%": [0.04,0.03,0.55,0.38,0.0,0.12,0.11,0.39,0.37,0.01,0.01] # manually set %
-}
-
-df = pd.DataFrame(data)
-
-# Step 1: Sum of month
-df["sum_of_month"] = df.groupby("MONTH")["VALUE"].transform("sum")
-
-# Step 2: Sum of month-proposition
-df["sum_of_month_proposition"] = df.groupby(["MONTH","Proposition"])["VALUE"].transform("sum")
-
-# Step 3: Value/month-proposition
-df["Value_month_proposition"] = df["VALUE"] / df["sum_of_month_proposition"]
-
-# Step 4: sum_of_month * Increase%
-df["sum_month_Increase"] = df["sum_of_month"] * df["Increase%"]
-
-# Step 5: Final calculation
-df["Final_Result"] = df["Value_month_proposition"] * df["sum_month_Increase"]
-
-# Display result
-pd.set_option("display.float_format", "{:,.2f}".format)
-print(df)
+Sum({
+    <
+        DateField = {">=$(=Date(AddMonths(Max(DateField), -12), 'YYYY-MM-DD'))<=$(=Date(Max(DateField), 'YYYY-MM-DD'))"}
+    >
+} Revenue)
