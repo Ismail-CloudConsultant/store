@@ -1,5 +1,60 @@
-Sum({
-    <
-        DateField = {">=$(=Date(AddMonths(Max(DateField), -12), 'YYYY-MM-DD'))<=$(=Date(Max(DateField), 'YYYY-MM-DD'))"}
-    >
-} Revenue)
+Here’s a simple, manager-friendly explanation you can use:
+
+
+---
+
+What this application is
+
+This is a natural language to SQL application. Instead of writing complex SQL queries, a user can simply type a question in plain English, like “How much sales happened in Jan 2025?”, and the system will automatically:
+
+1. Understand the question.
+
+
+2. Convert it into the correct SQL query (based on our data dictionary).
+
+
+3. Run it on BigQuery.
+
+
+4. Return the answer in plain English.
+
+
+
+
+---
+
+The Problem it Solves
+
+Today, business teams and analysts often depend heavily on data engineers or SQL experts to pull data from BigQuery.
+
+Writing queries is slow, requires technical knowledge, and increases the risk of human error.
+
+Non-technical users cannot easily self-serve data.
+
+
+
+---
+
+How It Will Be Useful
+
+Faster Insights: Anyone (even without SQL knowledge) can get quick answers from data by just asking a question.
+
+Reduces Bottlenecks: Analysts and engineers don’t spend time writing repetitive SQL queries for others.
+
+Consistency: Since queries are generated based on a controlled data dictionary, users will always query approved tables/columns.
+
+Security: Validation rules prevent harmful queries (like DELETE, DROP, or UPDATE) from running.
+
+Scalability: The same framework can work across different business domains (sales, compliance, operations, risk) with only changes in the data dictionary.
+
+
+
+---
+
+👉 In short, this tool makes data access conversational and safe, helping business teams make faster, data-driven decisions without always relying on technical teams.
+
+
+---
+
+Would you like me to also create a one-slide manager-friendly presentation (with bullet points + a simple flow) that you can use directly in meetings?
+
