@@ -1,60 +1,6 @@
-Here’s a simple, manager-friendly explanation you can use:
-
-
----
-
-What this application is
-
-This is a natural language to SQL application. Instead of writing complex SQL queries, a user can simply type a question in plain English, like “How much sales happened in Jan 2025?”, and the system will automatically:
-
-1. Understand the question.
-
-
-2. Convert it into the correct SQL query (based on our data dictionary).
-
-
-3. Run it on BigQuery.
-
-
-4. Return the answer in plain English.
-
-
-
-
----
-
-The Problem it Solves
-
-Today, business teams and analysts often depend heavily on data engineers or SQL experts to pull data from BigQuery.
-
-Writing queries is slow, requires technical knowledge, and increases the risk of human error.
-
-Non-technical users cannot easily self-serve data.
-
-
-
----
-
-How It Will Be Useful
-
-Faster Insights: Anyone (even without SQL knowledge) can get quick answers from data by just asking a question.
-
-Reduces Bottlenecks: Analysts and engineers don’t spend time writing repetitive SQL queries for others.
-
-Consistency: Since queries are generated based on a controlled data dictionary, users will always query approved tables/columns.
-
-Security: Validation rules prevent harmful queries (like DELETE, DROP, or UPDATE) from running.
-
-Scalability: The same framework can work across different business domains (sales, compliance, operations, risk) with only changes in the data dictionary.
-
-
-
----
-
-👉 In short, this tool makes data access conversational and safe, helping business teams make faster, data-driven decisions without always relying on technical teams.
-
-
----
-
-Would you like me to also create a one-slide manager-friendly presentation (with bullet points + a simple flow) that you can use directly in meetings?
-
+Proposition	Channel	0–14K	14K–28K	28K–70K	70K–280K	>280K		Proposition	Channel	0–14K	14K–28K	28K–70K	70K–280K	>280K
+Non-Premier	Branch	0.6	0.4	0.8	0.6	0.4		Non-Premier	Branch	3	1.2	0.9	0.5	0.4
+Non-Premier	Digital	7.4	4.6	4.2	6.4	4.6		Non-Premier	Digital	47	18.8	7.6	1.8	0.8
+Premier	Branch	0.6	1	2.8	7.5	3.2		Premier	Branch	1	1	1.5	1.8	0.7
+Premier	Digital	1.9	2.5	7.2	23.5	19.8		Premier	Digital	2	0	2	5.9	2.1
+Column total		10.5	8.5	15	38	28		Column total		53	21	12	10	5.2
