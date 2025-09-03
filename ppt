@@ -1,6 +1,5 @@
 import os
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
@@ -9,12 +8,9 @@ from selenium.common.exceptions import (
     ElementNotSelectableException, StaleElementReferenceException
 )
 
-def load_browser(chrome_driver, chrome_app, gcxi_url):
+def load_browser(chrome_app, gcxi_url, base_path):
     chromepath = "{}".format(chrome_app)
     chrome_options = webdriver.ChromeOptions()
-
-    # Define chromedriver path properly
-    service = Service(r"C:\swdtools\Chrome Driver\chromedriver.exe")
 
     # Setup download directory
     download_path = os.path.join(base_path, 'Download')
@@ -24,8 +20,8 @@ def load_browser(chrome_driver, chrome_app, gcxi_url):
     chrome_options.add_experimental_option('useAutomationExtension', False)
     chrome_options.binary_location = chromepath
 
-    # ✅ New Selenium syntax with Service
-    browser = webdriver.Chrome(service=service, options=chrome_options)
+    # ✅ No need to specify chromedriver.exe manually (Selenium Manager handles it)
+    browser = webdriver.Chrome(options=chrome_options)
     browser.get(gcxi_url)
 
     wait = WebDriverWait(
