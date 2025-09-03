@@ -1,6 +1,44 @@
-Proposition	Channel	0–14K	14K–28K	28K–70K	70K–280K	>280K		Proposition	Channel	0–14K	14K–28K	28K–70K	70K–280K	>280K
-Non-Premier	Branch	0.6	0.4	0.8	0.6	0.4		Non-Premier	Branch	3	1.2	0.9	0.5	0.4
-Non-Premier	Digital	7.4	4.6	4.2	6.4	4.6		Non-Premier	Digital	47	18.8	7.6	1.8	0.8
-Premier	Branch	0.6	1	2.8	7.5	3.2		Premier	Branch	1	1	1.5	1.8	0.7
-Premier	Digital	1.9	2.5	7.2	23.5	19.8		Premier	Digital	2	0	2	5.9	2.1
-Column total		10.5	8.5	15	38	28		Column total		53	21	12	10	5.2
+import os
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import (
+    NoSuchElementException, ElementNotVisibleException,
+    ElementNotSelectableException, StaleElementReferenceException
+)
+
+def load_browser(chrome_driver, chrome_app, gcxi_url):
+    chromepath = "{}".format(chrome_app)
+    chrome_options = webdriver.ChromeOptions()
+
+    # Define chromedriver path properly
+    service = Service(r"C:\swdtools\Chrome Driver\chromedriver.exe")
+
+    # Setup download directory
+    download_path = os.path.join(base_path, 'Download')
+    download_path_pref = {"download.default_directory": rf"{download_path}"}
+
+    chrome_options.add_experimental_option("prefs", download_path_pref)
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+    chrome_options.binary_location = chromepath
+
+    # ✅ New Selenium syntax with Service
+    browser = webdriver.Chrome(service=service, options=chrome_options)
+    browser.get(gcxi_url)
+
+    wait = WebDriverWait(
+        browser,
+        600,
+        poll_frequency=1,
+        ignored_exceptions=[
+            NoSuchElementException, ElementNotVisibleException,
+            ElementNotSelectableException, StaleElementReferenceException
+        ]
+    )
+
+    wait.until(EC.element_to_be_clickable((By.ID, '3054')))
+    browser.maximize_window()
+
+    return browser, wait
