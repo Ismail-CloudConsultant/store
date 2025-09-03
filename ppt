@@ -1,5 +1,6 @@
 import os
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
@@ -20,8 +21,9 @@ def load_browser(chrome_app, gcxi_url, base_path):
     chrome_options.add_experimental_option('useAutomationExtension', False)
     chrome_options.binary_location = chromepath
 
-    # ✅ No need to specify chromedriver.exe manually (Selenium Manager handles it)
-    browser = webdriver.Chrome(options=chrome_options)
+    # ✅ Manually point to ChromeDriver
+    service = Service(r"C:\swdtools\Chrome Driver\chromedriver.exe")
+    browser = webdriver.Chrome(service=service, options=chrome_options)
     browser.get(gcxi_url)
 
     wait = WebDriverWait(
