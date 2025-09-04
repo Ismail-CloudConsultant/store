@@ -47,31 +47,40 @@ bt
 
 import pandas as pd
 
-# Example: df = pd.read_csv("sgh_c_installment_tracker.csv")
+# Example: df = pd.read_csv("inm_c_installment_tracker.csv")
 
-# Aggregate
+# Filter for country
+df = df[df["country"] == "INM"]
+
+# Aggregate with case-when style conditions
 result = (
-    df.groupby("month")
-      .agg(
-          BT_PORTFOLIO_BAL=(
-              "installment_balance", 
-              lambda x: x[df.loc[x.index, "plan_type"].isin(["BT", "BTI"])].sum()
-          )
-      )
-      .reset_index()
-      .sort_values("month")
+    df.groupby(["month", "plan_type"]).agg(
+        BT_NEW_SALES=("new_sales", lambda x: x[df.loc[x.index, "plan_type"].isin(["BT", "BTI"])].sum()),
+        BT_PORTFOLIO_BAL=("installment_balance", lambda x: x[df.loc[x.index, "plan_type"].isin(["BT", "BTI"])].sum()),
+        INSTALLMENT_NEW_SALES=("new_sales", lambda x: x[df.loc[x.index, "plan_type"].isin(
+            ["Balance Conversion","CIP","Merchant IPP","Spend Conversion","Unmapped"])].sum()),
+        INSTALLMENT_PORTFOLIO_BAL=("installment_balance", lambda x: x[df.loc[x.index, "plan_type"].isin(
+            ["Balance Conversion","CIP","Merchant IPP","Spend Conversion","Unmapped"])].sum()),
+        BT=("new_sales", lambda x: x[df.loc[x.index, "plan_type"].isin(["BT", "BTI"])].sum()),
+        CIP=("new_sales", lambda x: x[df.loc[x.index, "plan_type"] == "CIP"].sum()),
+        Merchant_IPP=("new_sales", lambda x: x[df.loc[x.index, "plan_type"] == "Merchant IPP"].sum()),
+        Spend_Conversion=("new_sales", lambda x: x[df.loc[x.index, "plan_type"] == "Spend Conversion"].sum()),
+        Others=("new_sales", lambda x: x[df.loc[x.index, "plan_type"] == "Unmapped"].sum())
+    )
+    .reset_index()
+    .sort_values(["month", "plan_type"])
 )
 
-# Transpose (months as columns, metric as row)
+# Transpose: melt + pivot
 pivot_df = result.melt(
-    id_vars=["month"], 
+    id_vars=["month", "plan_type"], 
     var_name="Metric", 
     value_name="Value"
 )
 
 final = pivot_df.pivot_table(
-    index="Metric",
-    columns="month",
+    index=["plan_type", "Metric"], 
+    columns="month", 
     values="Value"
 ).reset_index()
 
