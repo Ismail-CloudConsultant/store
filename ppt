@@ -14,3 +14,28 @@ result = (
 )
 
 print(result.head())
+
+
+# First get the aggregated result
+result = (
+    df.groupby("snapshot_date")
+      .agg(
+          SPEND=("SPENDS", "sum"),
+          debit_active=("SPEND_ACTIVE_TOTAL", lambda x: x.sum() / len(x))
+      )
+      .reset_index()
+      .sort_values("snapshot_date")
+)
+
+# Melt + Pivot to transpose
+pivot_df = result.melt(id_vars=["snapshot_date"], 
+                       var_name="Metric", 
+                       value_name="Value")
+
+final = pivot_df.pivot_table(
+    index="Metric",
+    columns="snapshot_date",
+    values="Value"
+).reset_index()
+
+print(final)
