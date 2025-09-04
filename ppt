@@ -1,48 +1,16 @@
 import pandas as pd
 
-# Example: load your data (replace with actual read from csv/sql/parquet etc.)
-# df = pd.read_csv("portfolio.csv")
+# Example: load your dataframe
+# df = pd.read_csv("sgh_c_spend_summary.csv")  
 
-# Assuming your dataframe is something like:
-# Columns: ['month', 'proposition', 'aif', 'AIF_ACCOUNTS', 'VOL_CLOSED_ACCOUNTS', 
-#           'BALANCE_ACTIVE', 'TOTAL_IBB_BALANCE', 'TOTAL_BALANCE', 'CUSTOMER_PAYMENTS',
-#           'CREDIT_LIMIT', 'STATEMENT_ACTIVE', 'CORE_IBB_BALANCE']
-
-COUNTRY = "INM"
-
-# Ensure month is treated as YYYYMM integer/string
-df["month"] = df["month"].astype(int)
-
-# Create a previous_month column dynamically for joining
-df["prev_month"] = (pd.to_datetime(df["month"].astype(str) + "01", format="%Y%m%d")
-                    - pd.DateOffset(months=1)).dt.strftime("%Y%m").astype(int)
-
-# Aggregate all month-level metrics
-agg = df.groupby(["month", "proposition"]).agg(
-    AIF=("AIF_ACCOUNTS", lambda x: x[df.loc[x.index, "aif"] == 1].sum()),
-    ATTRITION=("VOL_CLOSED_ACCOUNTS", lambda x: x.sum()),
-    BALANCE_ACTIVE=("BALANCE_ACTIVE", lambda x: x[df.loc[x.index, "aif"] == 1].sum()),
-    IBB_BALANCE=("TOTAL_IBB_BALANCE", lambda x: x[df.loc[x.index, "aif"] == 1].sum()),
-    TOTAL_BALANCE_EOM=("TOTAL_BALANCE", lambda x: x[df.loc[x.index, "aif"] == 1].sum()),
-    PAYMENT_AMOUNT=("CUSTOMER_PAYMENTS", lambda x: x[df.loc[x.index, "aif"] == 1].sum()),
-    CREDIT_LIMIT=("CREDIT_LIMIT", lambda x: x[df.loc[x.index, "aif"] == 1].sum()),
-    TOTAL_ACTIVE=("STATEMENT_ACTIVE", lambda x: x[df.loc[x.index, "aif"] == 1].sum()),
-    TOTAL_REVOLVING_BALANCE=("CORE_IBB_BALANCE", lambda x: x[df.loc[x.index, "aif"] == 1].sum())
-).reset_index()
-
-# To get PREVIOUS_MONTH_BALANCE, we need to merge with lagged data
-prev_bal = df[df["aif"] == 1].groupby(["month", "proposition"])["TOTAL_BALANCE"].sum().reset_index()
-prev_bal["month"] = prev_bal["month"] + 1  # shift forward to align with current month
-
-# Merge to bring in previous month balance
-result = pd.merge(
-    agg,
-    prev_bal.rename(columns={"TOTAL_BALANCE": "PREVIOUS_MONTH_BALANCE"}),
-    how="left",
-    on=["month", "proposition"]
+result = (
+    df.groupby("snapshot_date")
+      .agg(
+          SPEND=("SPENDS", "sum"),
+          debit_active=("SPEND_ACTIVE_TOTAL", lambda x: x.sum() / len(x))
+      )
+      .reset_index()
+      .sort_values("snapshot_date")
 )
-
-# Add country column
-result["COUNTRY"] = COUNTRY
 
 print(result.head())
