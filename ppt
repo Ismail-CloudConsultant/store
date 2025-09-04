@@ -1,86 +1,30 @@
 import pandas as pd
 
-# Example: load your dataframe
-# df = pd.read_csv("sgh_c_spend_summary.csv")  
+# Example: df = pd.read_csv("inm_c_aqt_summary_b.csv")
 
+# Filter first
+df = df[(df["qlik_mob"].isin([3, 6])) & (df["period"] == "M")]
+
+# Aggregate
 result = (
-    df.groupby("snapshot_date")
-      .agg(
-          SPEND=("SPENDS", "sum"),
-          debit_active=("SPEND_ACTIVE_TOTAL", lambda x: x.sum() / len(x))
-      )
-      .reset_index()
-      .sort_values("snapshot_date")
-)
-
-print(result.head())
-
-
-# First get the aggregated result
-result = (
-    df.groupby("snapshot_date")
-      .agg(
-          SPEND=("SPENDS", "sum"),
-          debit_active=("SPEND_ACTIVE_TOTAL", lambda x: x.sum() / len(x))
-      )
-      .reset_index()
-      .sort_values("snapshot_date")
-)
-
-# Melt + Pivot to transpose
-pivot_df = result.melt(id_vars=["snapshot_date"], 
-                       var_name="Metric", 
-                       value_name="Value")
-
-final = pivot_df.pivot_table(
-    index="Metric",
-    columns="snapshot_date",
-    values="Value"
-).reset_index()
-
-print(final)
-
-
-
-
-bt
-
-import pandas as pd
-
-# Example: df = pd.read_csv("inm_c_installment_tracker.csv")
-
-# Filter for country
-df = df[df["country"] == "INM"]
-
-# Aggregate with case-when style conditions
-result = (
-    df.groupby(["month", "plan_type"]).agg(
-        BT_NEW_SALES=("new_sales", lambda x: x[df.loc[x.index, "plan_type"].isin(["BT", "BTI"])].sum()),
-        BT_PORTFOLIO_BAL=("installment_balance", lambda x: x[df.loc[x.index, "plan_type"].isin(["BT", "BTI"])].sum()),
-        INSTALLMENT_NEW_SALES=("new_sales", lambda x: x[df.loc[x.index, "plan_type"].isin(
-            ["Balance Conversion","CIP","Merchant IPP","Spend Conversion","Unmapped"])].sum()),
-        INSTALLMENT_PORTFOLIO_BAL=("installment_balance", lambda x: x[df.loc[x.index, "plan_type"].isin(
-            ["Balance Conversion","CIP","Merchant IPP","Spend Conversion","Unmapped"])].sum()),
-        BT=("new_sales", lambda x: x[df.loc[x.index, "plan_type"].isin(["BT", "BTI"])].sum()),
-        CIP=("new_sales", lambda x: x[df.loc[x.index, "plan_type"] == "CIP"].sum()),
-        Merchant_IPP=("new_sales", lambda x: x[df.loc[x.index, "plan_type"] == "Merchant IPP"].sum()),
-        Spend_Conversion=("new_sales", lambda x: x[df.loc[x.index, "plan_type"] == "Spend Conversion"].sum()),
-        Others=("new_sales", lambda x: x[df.loc[x.index, "plan_type"] == "Unmapped"].sum())
+    df.groupby(["qlik_mob", "booking_mob", "snapshot_date"]).agg(
+        TOTAL_ACCTS=("accounts", "sum"),
+        ACTIVE_ACCTS=("account_active", "sum")
     )
     .reset_index()
-    .sort_values(["month", "plan_type"])
+    .sort_values(["qlik_mob", "booking_mob", "snapshot_date"])
 )
 
-# Transpose: melt + pivot
+# Melt + Pivot for transpose
 pivot_df = result.melt(
-    id_vars=["month", "plan_type"], 
+    id_vars=["qlik_mob", "booking_mob", "snapshot_date"], 
     var_name="Metric", 
     value_name="Value"
 )
 
 final = pivot_df.pivot_table(
-    index=["plan_type", "Metric"], 
-    columns="month", 
+    index=["qlik_mob", "booking_mob", "Metric"], 
+    columns="snapshot_date", 
     values="Value"
 ).reset_index()
 
