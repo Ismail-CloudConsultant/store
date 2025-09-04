@@ -39,3 +39,40 @@ final = pivot_df.pivot_table(
 ).reset_index()
 
 print(final)
+
+
+
+
+bt
+
+import pandas as pd
+
+# Example: df = pd.read_csv("sgh_c_installment_tracker.csv")
+
+# Aggregate
+result = (
+    df.groupby("month")
+      .agg(
+          BT_PORTFOLIO_BAL=(
+              "installment_balance", 
+              lambda x: x[df.loc[x.index, "plan_type"].isin(["BT", "BTI"])].sum()
+          )
+      )
+      .reset_index()
+      .sort_values("month")
+)
+
+# Transpose (months as columns, metric as row)
+pivot_df = result.melt(
+    id_vars=["month"], 
+    var_name="Metric", 
+    value_name="Value"
+)
+
+final = pivot_df.pivot_table(
+    index="Metric",
+    columns="month",
+    values="Value"
+).reset_index()
+
+print(final)
