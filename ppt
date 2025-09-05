@@ -1,31 +1,20 @@
-import pandas as pd
-
-# Example: df = pd.read_csv("inm_c_aqt_summary_b.csv")
-
-# Filter first
-df = df[(df["qlik_mob"].isin([3, 6])) & (df["period"] == "M")]
-
-# Aggregate
-result = (
-    df.groupby(["qlik_mob", "booking_mob", "snapshot_date"]).agg(
-        TOTAL_ACCTS=("accounts", "sum"),
-        ACTIVE_ACCTS=("account_active", "sum")
-    )
-    .reset_index()
-    .sort_values(["qlik_mob", "booking_mob", "snapshot_date"])
-)
-
-# Melt + Pivot for transpose
-pivot_df = result.melt(
-    id_vars=["qlik_mob", "booking_mob", "snapshot_date"], 
-    var_name="Metric", 
-    value_name="Value"
-)
-
-final = pivot_df.pivot_table(
-    index=["qlik_mob", "booking_mob", "Metric"], 
-    columns="snapshot_date", 
-    values="Value"
-).reset_index()
-
-print(final)
+-- BigQuery script to create and load your table
+CREATE OR REPLACE TABLE `your_project.your_dataset.fx_table` AS
+SELECT * FROM UNNEST([
+  STRUCT("CIIOM" AS System,
+         "NZD/USD" AS CurrencyPair,
+         TIMESTAMP("2025-04-01 00:00:00") AS TradeDate,
+         "ETB" AS Product,
+         "NTP" AS SubProduct,
+         "Premier" AS Proposition,
+         "Digital" AS Channel,
+         "Value" AS Metric,
+         ">280K" AS Bucket,
+         0.1 AS Share,
+         0 AS Col1,
+         0 AS Col2,
+         600 AS Amount),
+  STRUCT("CIIOM", "NZD/USD", TIMESTAMP("2025-04-01 00:00:00"), "ETB", "NTP", "Premier", "Digital", "Value", ">280K", 0.2, 0, 0, 700),
+  STRUCT("CIIOM", "NZD/USD", TIMESTAMP("2025-04-01 00:00:00"), "ETB", "NTP", "Premier", "Digital", "Value", ">280K", 0.45, 0, 0, 800),
+  STRUCT("CIIOM", "NZD/USD", TIMESTAMP("2025-04-01 00:00:00"), "ETB", "NTP", "Premier", "Digital", "Value", ">280K", 0.25, 0, 0, 900)
+]);
