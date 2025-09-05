@@ -1,20 +1,2 @@
--- BigQuery script to create and load your table
-CREATE OR REPLACE TABLE `your_project.your_dataset.fx_table` AS
-SELECT * FROM UNNEST([
-  STRUCT("CIIOM" AS System,
-         "NZD/USD" AS CurrencyPair,
-         TIMESTAMP("2025-04-01 00:00:00") AS TradeDate,
-         "ETB" AS Product,
-         "NTP" AS SubProduct,
-         "Premier" AS Proposition,
-         "Digital" AS Channel,
-         "Value" AS Metric,
-         ">280K" AS Bucket,
-         0.1 AS Share,
-         0 AS Col1,
-         0 AS Col2,
-         600 AS Amount),
-  STRUCT("CIIOM", "NZD/USD", TIMESTAMP("2025-04-01 00:00:00"), "ETB", "NTP", "Premier", "Digital", "Value", ">280K", 0.2, 0, 0, 700),
-  STRUCT("CIIOM", "NZD/USD", TIMESTAMP("2025-04-01 00:00:00"), "ETB", "NTP", "Premier", "Digital", "Value", ">280K", 0.45, 0, 0, 800),
-  STRUCT("CIIOM", "NZD/USD", TIMESTAMP("2025-04-01 00:00:00"), "ETB", "NTP", "Premier", "Digital", "Value", ">280K", 0.25, 0, 0, 900)
-]);
+FORMAT_TIMESTAMP("%Y-%m-%d %H:%M:%S", TIMESTAMP("2025-04-01 00:00:00"))
+-- → "2025-04-01 00:00:00"
