@@ -1,2 +1,9 @@
-FORMAT_TIMESTAMP("%Y-%m-%d %H:%M:%S", TIMESTAMP("2025-04-01 00:00:00"))
--- → "2025-04-01 00:00:00"
+if([Transaction Amount] <= 14000, '0–14K',
+   if([Transaction Amount] <= 28000, '14K–28K',
+      if([Transaction Amount] <= 70000, '28K–70K',
+         if([Transaction Amount] <= 280000, '70K–280K',
+            '>280K'
+         )
+      )
+   )
+)
