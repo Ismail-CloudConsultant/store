@@ -1,8 +1,10 @@
 import re
 import pandas as pd
+import numpy as np
+import io
 import streamlit as st
 
-# ---------- Parsing Function ----------
+# ---------------- Instruction Parser ----------------
 def parse_instruction(text):
     # Extract currency pairs (AUD-NZD, USD-EUR, etc.)
     currency_pairs = re.findall(r"[A-Z]{3}[- ]?[A-Z]{3}", text)
@@ -52,17 +54,79 @@ def create_grid(paragraph):
     df = pd.DataFrame(parsed_data)
     return df
 
-# ---------- Streamlit App ----------
-st.title("💱 Currency Margin Instruction Parser")
-
-st.write("Paste your instructions below (one per line) and click **Generate Grid**.")
-
-instructions = st.text_area("Enter Instructions:", height=200)
-
-if st.button("Generate Grid"):
-    if instructions.strip():
-        grid = create_grid(instructions)
-        st.success("✅ Instructions parsed successfully!")
-        st.dataframe(grid, use_container_width=True)
+# ---------------- Validate Page ----------------
+elif sheet == "Validate":
+    st.header("Validation Report")    
+    if st.session_state.updated_file is None:
+        st.warning("No updated file found. Please run Update first.")
     else:
-        st.warning("⚠️ Please enter at least one instruction.")
+        df_main = st.session_state.main_file
+        df_updated = st.session_state.updated_file
+
+        # Ensure indexes match
+        df_main = df_main.reset_index(drop=True)
+        df_updated = df_updated.reset_index(drop=True)
+
+        # Identify changes
+        changes_mask = ~(df_main.eq(df_updated)).all(axis=1)
+        changed_rows = df_updated[changes_mask]
+        total_rows = len(df_main)
+        num_changed_rows = changes_mask.sum()
+
+        col=['Product', 'Channel', 'Send Currency', 'Receive Currency',
+           'Customer Segment Type', 'Tier Min Txn Amount', 'Tier Max Txn Amount',
+           'Start Date Time MM/DD/YYYY HH24:MI:SS',
+           'End Date Time MM/DD/YYYY HH24:MI:SS']
+        changes=df_main.merge(changed_rows,on=col,how='inner')
+        
+        changes['Tier']=changes['Tier Min Txn Amount']+changes['Tier Max Txn Amount']
+        when=[				
+            changes['Tier']==14000,				
+            changes['Tier']==42000,				
+            changes['Tier']==98000,
+            changes['Tier']==350000,
+            changes['Tier']==1000279999,
+        ]				
+                        
+        then=['0-14k','14-28k','28-70k','70-280k','>280k']				
+        changes['Tier1']=np.select(when,then,default='Others')	
+        
+        changes['perchange']=((changes['Core Margin Value_y']-changes['Core Margin Value_x'])/changes['Core Margin Value_x'])
+        changes=changes[['Product', 'Channel', 'Send Currency', 'Receive Currency',
+           'Customer Segment Type','perchange','Tier1']]
+        segment_changes=changes.pivot_table(index=['Product','Channel','Send Currency','Receive Currency','Customer Segment Type'],
+                            columns='Tier1',
+                            values='perchange',
+                            aggfunc="sum")
+
+        # Metrics summary
+        st.metric("Total Records", total_rows)
+        st.metric("Total number of Currency records changed", num_changed_rows)
+
+        st.subheader("Summary of Updated-Currency-Pairs")
+        st.dataframe(segment_changes)
+
+        # ---------------- Instruction Parser Section ----------------
+        st.subheader("Instruction Parser")
+        instructions = st.text_area("Paste your instructions here:", height=150)
+        
+        if st.button("Generate Instruction Grid"):
+            if instructions.strip():
+                grid = create_grid(instructions)
+                st.success("✅ Instructions parsed successfully!")
+                st.dataframe(grid, use_container_width=True)
+            else:
+                st.warning("⚠️ Please enter at least one instruction.")
+
+        # Download Updated File
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            df_updated.to_excel(writer, index=False, sheet_name='Core_Margin_Configuration')
+            buffer.seek(0)
+            
+        st.download_button(
+            label=" Download Updated File",
+            data=buffer,
+            file_name="Core_Margin_Configuration.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
