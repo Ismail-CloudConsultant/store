@@ -1,9 +1,68 @@
-if([Transaction Amount] <= 14000, '0–14K',
-   if([Transaction Amount] <= 28000, '14K–28K',
-      if([Transaction Amount] <= 70000, '28K–70K',
-         if([Transaction Amount] <= 280000, '70K–280K',
-            '>280K'
-         )
-      )
-   )
-)
+import re
+import pandas as pd
+import streamlit as st
+
+# ---------- Parsing Function ----------
+def parse_instruction(text):
+    # Extract currency pairs (AUD-NZD, USD-EUR, etc.)
+    currency_pairs = re.findall(r"[A-Z]{3}[- ]?[A-Z]{3}", text)
+
+    # Extract percentage or bps
+    change = None
+    percent_match = re.findall(r"(\d+)\s*%", text)
+    bps_match = re.findall(r"(\d+)\s*bps", text, flags=re.IGNORECASE)
+
+    if percent_match:
+        change = f"{percent_match[0]}%"
+    elif bps_match:
+        change = f"{bps_match[0]} bps"
+
+    # Detect action (increase/decrease)
+    if re.search(r"increase|raise", text, re.IGNORECASE):
+        action = "Increase"
+    elif re.search(r"decrease|reduce", text, re.IGNORECASE):
+        action = "Decrease"
+    else:
+        action = None
+
+    # Detect customer segment
+    customer_type = None
+    match = re.search(r"(Premier|Retail|Corporate|Personal)", text, re.IGNORECASE)
+    if match:
+        customer_type = match.group(1).capitalize()
+
+    # Detect tier/bucket
+    tier_bucket = None
+    match = re.search(r"(tier\s*\d+\s*bucket)", text, re.IGNORECASE)
+    if match:
+        tier_bucket = match.group(1).title()  # e.g., "Tier 2 Bucket"
+
+    return {
+        "Sentence": text.strip(),
+        "Currency Pair": currency_pairs[0] if currency_pairs else None,
+        "Action": action,
+        "Change": change,
+        "Customer Segment": customer_type,
+        "Tier/Bucket": tier_bucket
+    }
+
+def create_grid(paragraph):
+    lines = [line.strip() for line in paragraph.split("\n") if line.strip()]
+    parsed_data = [parse_instruction(line) for line in lines]
+    df = pd.DataFrame(parsed_data)
+    return df
+
+# ---------- Streamlit App ----------
+st.title("💱 Currency Margin Instruction Parser")
+
+st.write("Paste your instructions below (one per line) and click **Generate Grid**.")
+
+instructions = st.text_area("Enter Instructions:", height=200)
+
+if st.button("Generate Grid"):
+    if instructions.strip():
+        grid = create_grid(instructions)
+        st.success("✅ Instructions parsed successfully!")
+        st.dataframe(grid, use_container_width=True)
+    else:
+        st.warning("⚠️ Please enter at least one instruction.")
