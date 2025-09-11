@@ -1,81 +1,14 @@
-import re
-import pandas as pd
-import streamlit as st
+## Updated Architecture with Python & BigQuery
+Your pipeline will look like this, with the audit log service now writing structured data directly into a BigQuery table.
 
-# ---------------- Instruction Parser ----------------
-def parse_instruction(text):
-    # Extract currency pairs (AUD-NZD, USD-EUR, etc.)
-    currency_pairs = re.findall(r"[A-Z]{3}[- ]?[A-Z]{3}", text)
+User Access (IAP): An authorized Ops team member logs in through the secure URL provided by Identity-Aware Proxy (IAP).
 
-    # Extract percentage or bps
-    change = None
-    percent_match = re.findall(r"(\d+)\s*%", text)
-    bps_match = re.findall(r"(\d+)\s*bps", text, flags=re.IGNORECASE)
+File Upload (Cloud Storage): The user uploads the mapping file (Excel/CSV) or an existing PCD file. Your Python application directs this file to be saved in a Cloud Storage bucket for inputs.
 
-    if percent_match:
-        change = f"{percent_match[0]}%"
-    elif bps_match:
-        change = f"{bps_match[0]} bps"
+Processing (Cloud Run): The file upload triggers your Python application running on Cloud Run. The code fetches the file from Cloud Storage and performs all the required business logic: parsing, validation, margin calculation, and generation of the output PCD file.
 
-    # Detect action (increase/decrease)
-    if re.search(r"increase|raise", text, re.IGNORECASE):
-        action = "Increase"
-    elif re.search(r"decrease|reduce", text, re.IGNORECASE):
-        action = "Decrease"
-    else:
-        action = None
+Audit Logging (BigQuery): As the application processes the data, it streams structured log entries for every key action (file received, validation success/fail, changes made) into a predefined table in BigQuery.
 
-    # Detect customer segment
-    customer_type = None
-    match = re.search(r"(Premier|Retail|Corporate|Personal)", text, re.IGNORECASE)
-    if match:
-        customer_type = match.group(1).capitalize()
+Output Generation (Cloud Storage): The newly generated PCD file and a validation summary report are saved to the output Cloud Storage bucket.
 
-    # Detect tier/bucket
-    tier_bucket = None
-    match = re.search(r"(tier\s*\d+\s*bucket)", text, re.IGNORECASE)
-    if match:
-        tier_bucket = match.group(1).title()  # e.g., "Tier 2 Bucket"
-
-    return {
-        "Sentence": text.strip(),
-        "Currency Pair": currency_pairs[0] if currency_pairs else None,
-        "Action": action,
-        "Change": change,
-        "Customer Segment": customer_type,
-        "Tier/Bucket": tier_bucket
-    }
-
-def create_grid(paragraph):
-    lines = [line.strip() for line in paragraph.split("\n") if line.strip()]
-    parsed_data = [parse_instruction(line) for line in lines]
-    df = pd.DataFrame(parsed_data)
-    return df
-
-
-# ---------------- New Instruction Parser Sheet ----------------
-elif sheet == "Instruction Parser":
-    st.header("💬 Instruction Parser")
-
-    st.write("Paste instructions below (one per line). Example:")
-    st.code("""Can you increase the currency margin of AUD-NZY by 10 bps for all Premier Customers for tier 2 bucket.
-Please decrease the currency margin of USD-EUR by 5 bps for Retail Customers tier 5 bucket.""")
-
-    instructions = st.text_area("Enter Instructions:", height=200)
-
-    if st.button("Generate Grid"):
-        if instructions.strip():
-            grid = create_grid(instructions)
-            st.success("✅ Instructions parsed successfully!")
-            st.dataframe(grid, use_container_width=True)
-
-            # Optional: Download grid
-            csv = grid.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Download Grid as CSV",
-                data=csv,
-                file_name="instruction_grid.csv",
-                mime="text/csv"
-            )
-        else:
-            st.warning("⚠️ Please enter at least one instruction.")
+Review & Deployment: The Governance team reviews the output files and the validation report. They can also query the BigQuery audit log for a complete, immutable record of the changes before the final file is uploaded to the bank's core FX system.
