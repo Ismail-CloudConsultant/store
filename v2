@@ -8,3 +8,6 @@ def unzip_file(zip_path, extract_to):
 
 # Example usage
 unzip_file("my_folder.zip", "unzipped_folder")
+
+
+!gsutil cp gs://my-bucket-name/backups/my_folder.zip .
