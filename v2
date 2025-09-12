@@ -1,16 +1,32 @@
 import os
 import zipfile
+from google.cloud import storage
 
-def zip_folder(folder_path, output_path):
-    # Create a ZipFile object
-    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        # Walk through directory and add files
+def zip_folder(folder_path, zip_path):
+    """Create a zip file from a folder."""
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(folder_path):
             for file in files:
                 file_path = os.path.join(root, file)
-                # Keep folder structure inside zip
                 arcname = os.path.relpath(file_path, folder_path)
                 zipf.write(file_path, arcname)
 
+def upload_to_gcs(bucket_name, source_file, destination_blob):
+    """Upload a file to GCS bucket."""
+    client = storage.Client()  # Auth via GOOGLE_APPLICATION_CREDENTIALS
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(destination_blob)
+    blob.upload_from_filename(source_file)
+    print(f"Uploaded {source_file} to gs://{bucket_name}/{destination_blob}")
+
 # Example usage:
-zip_folder("my_folder", "my_folder.zip")
+folder_to_zip = "my_folder"
+zip_file = "my_folder.zip"
+bucket_name = "my-bucket-name"
+destination_blob = "backups/my_folder.zip"
+
+# Zip the folder
+zip_folder(folder_to_zip, zip_file)
+
+# Upload to GCS
+upload_to_gcs(bucket_name, zip_file, destination_blob)
