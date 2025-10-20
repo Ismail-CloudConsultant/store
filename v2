@@ -1,13 +1,37 @@
-import zipfile
-import os
+from pyspark.sql import SparkSession
 
-def unzip_file(zip_path, extract_to):
-    """Extract a zip file to a folder."""
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(extract_to)
+# It's good practice to initialize Spark with the connector JAR specified,
+# though this might be pre-configured in environments like Dataproc.
+spark = SparkSession.builder \
+    .appName('PySpark_to_BigQuery') \
+    .config('spark.jars.packages', 'com.google.cloud.spark:spark-bigquery-with-dependencies_2.12:0.29.0') \
+    .getOrCreate()
 
-# Example usage
-unzip_file("my_folder.zip", "unzipped_folder")
+# 1. Create a sample DataFrame to write
+data = [("James", 30, "Sales", 50000),
+        ("Anna", 25, "Engineering", 70000),
+        ("Robert", 45, "Sales", 60000)]
+columns = ["name", "age", "department", "salary"]
+df = spark.createDataFrame(data, columns)
 
+print("Sample DataFrame to be written:")
+df.show()
 
-!gsutil cp gs://my-bucket-name/backups/my_folder.zip .
+# 2. Set up your GCS and BigQuery details
+# This is the bucket you created for temporary staging
+temp_gcs_bucket = "your-temp-bucket-name"
+# The full path to your BigQuery table
+# format: project_id.dataset_name.table_name
+bq_table = "your-gcp-project-id.your_bq_dataset.your_bq_table"
+
+# 3. Use the .write method to save the DataFrame
+df.write \
+  .format("bigquery") \
+  .option("table", bq_table) \
+  .option("temporaryGcsBucket", temp_gcs_bucket) \
+  .mode("append") \
+  .save()
+
+print(f"Successfully wrote DataFrame to BigQuery table: {bq_table}")
+
+spark.stop()
