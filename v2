@@ -1,8 +1,0 @@
-df_with_bounds = df_with_stats.withColumn(
-    "lower_bound", F.col("mean_value") - 2 * F.col("stddev_value")
-).withColumn(
-    "upper_bound", F.col("mean_value") + 2 * F.col("stddev_value")
-).withColumn(
-    "is_outlier",
-    (F.col("monthvalue") < F.col("lower_bound")) | (F.col("monthvalue") > F.col("upper_bound"))
-)
